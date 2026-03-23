@@ -1720,7 +1720,7 @@ function autoScore(app) {
 
 // ── GROQ API helper (FREE - 90 req/min, perfect for production) ────────
 // Get your FREE key at: https://console.groq.com/keys (no credit card needed)
-const GROQ_KEY = "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"; // ← Get free key at console.groq.com/keys, paste here
+const GROQ_KEY = import.meta.env.VITE_GROQ_KEY; // ← Get free key at console.groq.com/keys, paste here
 
 async function callGroq(prompt) {
   if (!GROQ_KEY) return null;
