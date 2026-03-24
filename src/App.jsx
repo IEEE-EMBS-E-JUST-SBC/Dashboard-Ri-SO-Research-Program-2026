@@ -37,14 +37,9 @@ const WEBINARS = [
 const SHEETS_URL = import.meta.env.VITE_API_URL;
 
 const sheetsAPI = {
-  // Change GET to POST for CORS compatibility
   async get(sheet) {
     try {
-      const r = await fetch(SHEETS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get", sheet })
-      });
+      const r = await fetch(`${SHEETS_URL}?action=get&sheet=${encodeURIComponent(sheet)}`);
       if (!r.ok) return null;
       const json = await r.json();
       return json?.data ?? json ?? null;
