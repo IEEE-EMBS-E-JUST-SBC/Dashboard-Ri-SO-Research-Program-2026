@@ -10,6 +10,7 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/sheets-api/, '/macros/s/AKfycbwGNyERLjQN_xDphUDsaem87-nT2hG98RT6boXnesgrabKSkLqRB4VVQZYdlC8FNI8/exec'),
         secure: true,
+        followRedirects: true
       }
     }
   }
