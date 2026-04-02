@@ -35,10 +35,12 @@ const WEBINARS = [
 //  GOOGLE SHEETS API HELPER
 // ─────────────────────────────────────────────
 // const SHEETS_URL = import.meta.env.VITE_API_URL;
-const SHEETS_URL = import.meta.env.DEV
-  ? "/sheets-api"
-  : import.meta.env.VITE_API_URL;
-  
+// const SHEETS_URL = import.meta.env.DEV
+//   ? "/sheets-api"
+//   : import.meta.env.VITE_API_URL;
+
+const SHEETS_URL = "/api/google-sheets";
+
 // ── All communication with Google Apps Script ──
 const sheetsAPI = {
   async get(sheet) {
