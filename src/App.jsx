@@ -1761,6 +1761,7 @@ Year: ${app["Academic Year"]} | GPA: ${app["GPA"]}
 Tracks: ${app["Target Track"]}
 Programming: ${app["Programming Skill"]}
 Math/Stats: ${app["Math/Stats Skill"]}
+CV: ${app["CV Text"]}
 
 ${portfolioBlock}
 
