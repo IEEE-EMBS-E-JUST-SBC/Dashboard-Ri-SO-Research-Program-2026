@@ -2986,8 +2986,13 @@ function ProAdminDashboard() {
                   const agree = decs.length===1;
                   return (
                     <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid var(--frost)"}}>
-                      <span style={{fontSize:12,fontWeight:600}}>{(a["Name"]||"").split(" ")[0]} {(a["Name"]||"").split(" ")[1]?.(a["Name"]||"").split(" ")[1][0]+".":""}</span>
-                      <div style={{display:"flex",gap:4}}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>
+                      {(a["Name"] || "").split(" ")[0]}{" "}
+                      {(a["Name"] || "").split(" ")[1]
+                        ? (a["Name"] || "").split(" ")[1][0] + "."
+                        : ""}
+                    </span>                      
+                    <div style={{display:"flex",gap:4}}>
                         {appRevs.map((rev,j)=>{
                           const d = rev["decision"]||rev["Decision"]||"";
                           return <span key={j} style={{padding:"2px 7px",borderRadius:20,fontSize:9,fontWeight:700,background:decBg(d),color:decFg(d)}}>{d.slice(0,3)}</span>;
