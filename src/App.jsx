@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, createContext, useContext } from "rea
 // ─────────────────────────────────────────────
 //  CONSTANTS & DATA
 // ─────────────────────────────────────────────
-const ROLES = { SUPERADMIN: "superadmin", MENTOR: "mentor", PARTICIPANT: "participant" };
+const ROLES = { SUPERADMIN: "superadmin", MENTOR: "mentor", PARTICIPANT: "participant", PROADMIN: "proadmin" };
 
 // Local fallback seed — only used if Google Sheets is completely unreachable.
 // In production, all users live in the "Users" sheet of your spreadsheet.
@@ -32,6 +32,7 @@ const WEBINARS = [
 ];
 
 // ─────────────────────────────────────────────
+//  GOOGLE SHEETS API HELPER
 // ─────────────────────────────────────────────
 // const SHEETS_URL = import.meta.env.VITE_API_URL;
 // const SHEETS_URL = import.meta.env.DEV
@@ -385,6 +386,7 @@ body,#root{font-family:'DM Sans',sans-serif;background:var(--snow);color:var(--i
 .pill-superadmin{background:#FEF3C7;color:#92400E}
 .pill-mentor{background:#D1FAE5;color:#065F46}
 .pill-participant{background:#EDE9FE;color:var(--violet)}
+.pill-proadmin{background:linear-gradient(135deg,#1e1b4b,#312e81);color:white}
 `;
 
 // ─────────────────────────────────────────────
@@ -762,8 +764,9 @@ const StatusBadge = ({ status }) => {
 };
 
 const Avatar = ({ user }) => {
-  const cls = user?.role === ROLES.MENTOR ? "sava mentor" : user?.role === ROLES.SUPERADMIN ? "sava admin" : "sava";
-  return <div className={cls}>{user?.avatar || "?"}</div>;
+  const cls = user?.role === ROLES.MENTOR ? "sava mentor" : user?.role === ROLES.SUPERADMIN ? "sava admin" : user?.role === ROLES.PROADMIN ? "sava" : "sava";
+  const style = user?.role === ROLES.PROADMIN ? {background:"linear-gradient(135deg,#1e1b4b,#312e81)"} : {};
+  return <div className={cls} style={style}>{user?.avatar || "?"}</div>;
 };
 
 const PhaseBadge = ({ phase }) => <span className="badge b-phase">P{phase}: {PHASES[phase-1]?.name}</span>;
@@ -1429,167 +1432,98 @@ function MenteeProgress({ user }) {
 function AdminDashboard({ user }) {
   const { syncStatus } = useContext(DataCtx);
   const [apps, setApps]       = useState([]);
+  const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [debug, setDebug]     = useState({ step:"starting…" });
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const d = { step:"fetching…" };
-
-      try {
-        d.url = `${SHEETS_URL}?action=get&sheet=Applications`;
-        d.step = "fetch started";
-
-        const r = await fetch(d.url);
-        d.httpStatus = r.status;
-        d.step = "response received";
-
-        const text = await r.text();
-        d.rawLength = text.length;
-        d.rawPreview = text.slice(0, 600);
-        d.step = "text read";
-
-        if (!text || text.length === 0) {
-          d.step = "ERROR: empty response";
-          setDebug({ ...d });
-          setLoading(false);
-          return;
-        }
-
-        // Check if it's HTML (redirect/error page) instead of JSON
-        if (text.trim().startsWith("<")) {
-          d.step = "ERROR: got HTML not JSON — proxy redirect or CORS issue";
-          setDebug({ ...d });
-          setLoading(false);
-          return;
-        }
-
-        const json = JSON.parse(text);
-        d.jsonStatus = json.status;
-        d.jsonMessage = json.message || "";
-        d.step = "JSON parsed";
-
-        if (json.status === "ok" && Array.isArray(json.data)) {
-          d.rowCount = json.data.length;
-          d.firstRowKeys = json.data[0] ? Object.keys(json.data[0]).join(" | ") : "no rows";
-          d.step = `SUCCESS: ${json.data.length} rows loaded`;
-          setApps(json.data);
-        } else {
-          d.step = `Sheets returned: status=${json.status} message=${json.message}`;
-        }
-      } catch(e) {
-        d.step = `EXCEPTION: ${e.message}`;
-        d.stack = e.stack?.slice(0, 200);
-      }
-
-      setDebug({ ...d });
+      const [appsData, reviewsData] = await Promise.all([
+        sheetsAPI.get("Applications"),
+        sheetsAPI.get("Reviews")
+      ]);
+      if (appsData && Array.isArray(appsData)) setApps(appsData);
+      if (reviewsData && Array.isArray(reviewsData)) setReviews(reviewsData);
       setLoading(false);
     })();
   }, []);
 
-  const isSuccess = debug.step?.startsWith("SUCCESS");
+  const getTopDecision = (appEmail) => {
+    const appRevs = reviews.filter(r=>(r["applicationEmail"]||r["ApplicationEmail"]||"").toLowerCase()===(appEmail||"").toLowerCase());
+    const decs = appRevs.map(r=>(r["decision"]||r["Decision"]||"").toLowerCase());
+    if (decs.some(d=>d.includes("accept"))) return "Accepted";
+    if (decs.some(d=>d.includes("wait"))) return "Waitlisted";
+    if (decs.some(d=>d.includes("reject"))) return "Rejected";
+    return "Pending";
+  };
+
+  const accepted   = apps.filter(a=>getTopDecision(a["Email"])==="Accepted").length;
+  const waitlisted = apps.filter(a=>getTopDecision(a["Email"])==="Waitlisted").length;
+  const rejected   = apps.filter(a=>getTopDecision(a["Email"])==="Rejected").length;
+  const pending    = apps.filter(a=>getTopDecision(a["Email"])==="Pending").length;
 
   return (
     <div>
-      {/* Banner */}
-      <div className="banner" style={{marginBottom:20}}>
+      <div className="banner" style={{marginBottom:24}}>
         <div>
-          <div className="banner-chip">Super Admin · IEEE E-JUST EMBS SBC · Ri-Sō 2026</div>
+          <div className="banner-chip">Super Admin · IEEE E-JUST EMBS SBC · Ri-So 2026</div>
           <div className="banner-title">Program Control Center</div>
-          <div className="banner-sub">{loading ? "Connecting to Google Sheets…" : `${apps.length} applications loaded`}</div>
+          <div className="banner-sub">{loading ? "Connecting to Google Sheets..." : apps.length+" applications · "+reviews.length+" reviews submitted"}</div>
         </div>
         <div className="bstats">
-          <div className="bstat"><div className="bstat-val">{loading ? "…" : apps.length}</div><div className="bstat-label">Applications</div></div>
-          <div className="bstat"><div className="bstat-val">{syncStatus}</div><div className="bstat-label">Sheets Status</div></div>
+          <div className="bstat"><div className="bstat-val">{loading?"...":apps.length}</div><div className="bstat-label">Applications</div></div>
+          <div className="bstat"><div className="bstat-val">{loading?"...":reviews.length}</div><div className="bstat-label">Reviews</div></div>
         </div>
       </div>
 
-      {/* ALWAYS-VISIBLE DEBUG PANEL */}
-      <div style={{background:"#0F172A",color:"#E2E8F0",borderRadius:14,padding:20,marginBottom:24,fontFamily:"monospace",fontSize:12,lineHeight:2}}>
-        <div style={{color:"#FACC15",fontWeight:700,fontSize:13,marginBottom:12}}>
-          🔧 Connection Debug Panel
-          <span style={{marginLeft:12,fontSize:10,color:"#94A3B8",fontFamily:"sans-serif",fontWeight:400}}>
-            (shows what the API actually returns — remove once working)
-          </span>
-        </div>
-
-        <div><span style={{color:"#94A3B8",minWidth:180,display:"inline-block"}}>Status:</span>
-          <span style={{color: isSuccess ? "#86EFAC" : debug.step?.startsWith("ERROR") || debug.step?.startsWith("EXCEPTION") ? "#F87171" : "#FCD34D", fontWeight:700}}>
-            {debug.step || "—"}
-          </span>
-        </div>
-
-        {debug.url && <div><span style={{color:"#94A3B8",minWidth:180,display:"inline-block"}}>URL called:</span><span style={{color:"#CBD5E1"}}>{debug.url}</span></div>}
-        {debug.httpStatus !== undefined && <div><span style={{color:"#94A3B8",minWidth:180,display:"inline-block"}}>HTTP status:</span><span style={{color: debug.httpStatus===200?"#86EFAC":"#F87171"}}>{debug.httpStatus}</span></div>}
-        {debug.rawLength !== undefined && <div><span style={{color:"#94A3B8",minWidth:180,display:"inline-block"}}>Response length:</span><span>{debug.rawLength} chars</span></div>}
-        {debug.jsonStatus && <div><span style={{color:"#94A3B8",minWidth:180,display:"inline-block"}}>JSON status field:</span><span style={{color: debug.jsonStatus==="ok"?"#86EFAC":"#F87171"}}>{debug.jsonStatus}</span></div>}
-        {debug.jsonMessage && <div><span style={{color:"#94A3B8",minWidth:180,display:"inline-block"}}>JSON message:</span><span style={{color:"#F87171"}}>{debug.jsonMessage}</span></div>}
-        {debug.rowCount !== undefined && <div><span style={{color:"#94A3B8",minWidth:180,display:"inline-block"}}>Rows found:</span><span style={{color:"#86EFAC",fontWeight:700}}>{debug.rowCount}</span></div>}
-        {debug.firstRowKeys && <div><span style={{color:"#94A3B8",minWidth:180,display:"inline-block"}}>Column headers:</span><span style={{color:"#86EFAC"}}>{debug.firstRowKeys}</span></div>}
-
-        {debug.rawPreview && (
-          <div style={{marginTop:12}}>
-            <div style={{color:"#94A3B8",marginBottom:4}}>Raw response preview:</div>
-            <div style={{background:"#1E293B",padding:"10px 14px",borderRadius:8,color:"#CBD5E1",wordBreak:"break-all",maxHeight:120,overflowY:"auto",fontSize:11,lineHeight:1.6}}>
-              {debug.rawPreview}
-            </div>
+      <div className="g4 mb6">
+        {[[apps.length,"Total","👥",""],[pending,"Pending","⏳","amber"],[accepted,"Accepted","✅","green"],[waitlisted,"Waitlisted","◐","blue"]].map(([v,l,icon,c])=>(
+          <div key={l} className={"stat "+c}>
+            <div className="stat-icon">{icon}</div>
+            <div className="stat-val">{loading?"...": v}</div>
+            <div className="stat-label">{l}</div>
           </div>
-        )}
-
-        {!isSuccess && (
-          <div style={{marginTop:14,padding:"12px 14px",background:"rgba(248,113,113,.1)",border:"1px solid rgba(248,113,113,.3)",borderRadius:8,color:"#FCA5A5",fontSize:11,lineHeight:2,fontFamily:"sans-serif"}}>
-            <b style={{color:"#F87171"}}>Common fixes:</b><br/>
-            1. Sheet must be named exactly <b>"Applications"</b> (capital A, no spaces)<br/>
-            2. Your Vite proxy rewrites <code>/sheets-api</code> → the Apps Script URL — make sure <code>npm run dev</code> is running<br/>
-            3. Apps Script must be deployed as <b>"Anyone"</b> can access (not "Anyone with Google account")<br/>
-            4. After any script change, you must <b>create a new deployment</b> (not just save)
-          </div>
-        )}
+        ))}
       </div>
 
-      {/* Data display — only if loaded */}
       {!loading && apps.length > 0 && (
-        <>
-          <div className="g4 mb6">
-            {[
-              [apps.length, "Total Applications","👥",""],
-              [apps.filter(a=>!a["Reviewed"]).length,"Pending Review","⏳","amber"],
-              [apps.filter(a=>a["Status"]?.includes("Qualif")).length,"Qualified","✅","green"],
-              [apps.filter(a=>a["Status"]?.includes("Reject")).length,"Rejected","",""],
-            ].map(([v,l,icon,c])=>(
-              <div key={l} className={`stat ${c}`}>
-                <div className="stat-icon">{icon}</div>
-                <div className="stat-val">{v}</div>
-                <div className="stat-label">{l}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="card">
-            <div className="card-header">
-              <div><div className="card-title">📥 Applications — Live from Sheets</div><div className="card-sub">{apps.length} total</div></div>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <div className="sync-dot"/><span className="sync-txt">Sheets Live</span>
-              </div>
+        <div className="card">
+          <div className="card-header">
+            <div><div className="card-title">📥 Recent Applications</div><div className="card-sub">{apps.length} total</div></div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div className="sync-dot"/><span className="sync-txt">Sheets Live</span>
             </div>
-            <div className="card-body" style={{padding:0}}>
-              <table className="tbl">
-                <thead><tr><th>Name</th><th>University</th><th>GPA</th><th>Year</th><th>Track</th><th>Status</th></tr></thead>
-                <tbody>{apps.slice(0,30).map((a,i)=>(
+          </div>
+          <div className="card-body" style={{padding:0}}>
+            <table className="tbl">
+              <thead><tr><th>Name</th><th>University</th><th>GPA</th><th>Year</th><th>Track</th><th>Reviews</th><th>Status</th></tr></thead>
+              <tbody>{apps.slice(0,20).map((a,i)=>{
+                const appRevs = reviews.filter(r=>(r["applicationEmail"]||r["ApplicationEmail"]||"").toLowerCase()===(a["Email"]||"").toLowerCase());
+                const top = getTopDecision(a["Email"]);
+                const bg = top==="Accepted"?"#D1FAE5":top==="Waitlisted"?"#FEF3C7":top==="Rejected"?"#FEE2E2":"var(--frost)";
+                const fg = top==="Accepted"?"#065F46":top==="Waitlisted"?"#92400E":top==="Rejected"?"#991B1B":"var(--ink3)";
+                return (
                   <tr key={i}>
                     <td style={{fontWeight:600}}>{a["Name"]||"—"}</td>
-                    <td style={{fontSize:12,color:"var(--ink3)"}}>{(a["University"]||"—").slice(0,30)}</td>
+                    <td style={{fontSize:12,color:"var(--ink3)"}}>{(a["University"]||"—").slice(0,28)}</td>
                     <td className="mono">{a["GPA"]||"—"}</td>
                     <td style={{fontSize:12}}>{a["Academic Year"]||"—"}</td>
-                    <td style={{fontSize:11,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(a["Target Track"]||"—").split(",")[0]}</td>
-                    <td><span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:"#FEF3C7",color:"#92400E"}}>{a["Status"]||"Pending"}</span></td>
+                    <td style={{fontSize:11,maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(a["Target Track"]||"—").split(",")[0]}</td>
+                    <td className="mono" style={{fontSize:12}}>{appRevs.length}</td>
+                    <td><span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:bg,color:fg}}>{top}</span></td>
                   </tr>
-                ))}</tbody>
-              </table>
-            </div>
+                );
+              })}</tbody>
+            </table>
           </div>
-        </>
+        </div>
+      )}
+      {!loading && apps.length === 0 && (
+        <div className="card"><div className="card-body" style={{textAlign:"center",padding:48,color:"var(--ink3)"}}>
+          <div style={{fontSize:40,marginBottom:12}}>📋</div>
+          <div style={{fontSize:14,fontWeight:600}}>No applications loaded</div>
+          <div style={{fontSize:12,marginTop:6}}>Make sure your sheet is named exactly "Applications"</div>
+        </div></div>
       )}
     </div>
   );
@@ -2729,6 +2663,376 @@ function AdminSheetsConfig() {
 
 // ─────────────────────────────────────────────
 //  PROFILE VIEW (all roles)
+
+// =============================================================
+//  PRO ADMIN DASHBOARD — Full Review Analytics + Filtration
+// =============================================================
+
+function ProAdminDashboard() {
+  const { syncStatus } = useContext(DataCtx);
+  const [apps, setApps]       = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab]         = useState("overview");
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const [appsData, reviewsData] = await Promise.all([
+        sheetsAPI.get("Applications"),
+        sheetsAPI.get("Reviews")
+      ]);
+      if (appsData && Array.isArray(appsData)) setApps(appsData);
+      if (reviewsData && Array.isArray(reviewsData)) setReviews(reviewsData);
+      setLoading(false);
+    })();
+  }, []);
+
+  // Derive top decision per applicant (consensus)
+  const getDecision = (email) => {
+    const appRevs = reviews.filter(r=>(r["applicationEmail"]||r["ApplicationEmail"]||"").toLowerCase()===(email||"").toLowerCase());
+    const decs = appRevs.map(r=>(r["decision"]||r["Decision"]||"").toLowerCase());
+    if (decs.some(d=>d.includes("accept"))) return "Accepted";
+    if (decs.some(d=>d.includes("wait"))) return "Waitlisted";
+    if (decs.some(d=>d.includes("reject"))) return "Rejected";
+    return "Pending";
+  };
+
+  const accepted   = apps.filter(a=>getDecision(a["Email"])==="Accepted").length;
+  const waitlisted = apps.filter(a=>getDecision(a["Email"])==="Waitlisted").length;
+  const rejected   = apps.filter(a=>getDecision(a["Email"])==="Rejected").length;
+  const pending    = apps.filter(a=>getDecision(a["Email"])==="Pending").length;
+
+  // Reviewer stats
+  const reviewerMap = {};
+  reviews.forEach(r => {
+    const name = r["reviewerName"]||r["ReviewerName"]||r["reviewerEmail"]||r["ReviewerEmail"]||"Unknown";
+    if (!reviewerMap[name]) reviewerMap[name] = { name, total:0, accepted:0, waitlisted:0, rejected:0, scores:[] };
+    reviewerMap[name].total++;
+    const dec = (r["decision"]||r["Decision"]||"").toLowerCase();
+    if (dec.includes("accept")) reviewerMap[name].accepted++;
+    else if (dec.includes("wait")) reviewerMap[name].waitlisted++;
+    else if (dec.includes("reject")) reviewerMap[name].rejected++;
+    const score = parseFloat(r["score"]||r["Score"]||0);
+    if (score) reviewerMap[name].scores.push(score);
+  });
+  const reviewers = Object.values(reviewerMap).map(rv => ({
+    ...rv,
+    avgScore: rv.scores.length ? Math.round(rv.scores.reduce((a,b)=>a+b,0)/rv.scores.length) : 0
+  }));
+
+  // Track distribution from apps
+  const trackCounts = {};
+  apps.forEach(a => {
+    const t = (a["Target Track"]||"").split(",")[0].trim()||"Unknown";
+    trackCounts[t] = (trackCounts[t]||0)+1;
+  });
+
+  // GPA distribution buckets
+  const gpaBuckets = { "3.5+":0, "3.0-3.5":0, "2.5-3.0":0, "<2.5":0 };
+  apps.forEach(a => {
+    const g = parseFloat(a["GPA"])||0;
+    if (g>=3.5) gpaBuckets["3.5+"]++;
+    else if (g>=3.0) gpaBuckets["3.0-3.5"]++;
+    else if (g>=2.5) gpaBuckets["2.5-3.0"]++;
+    else gpaBuckets["<2.5"]++;
+  });
+
+  const maxGpa = Math.max(...Object.values(gpaBuckets), 1);
+  const maxTrack = Math.max(...Object.values(trackCounts), 1);
+
+  const decBg = d => d==="Accepted"?"#D1FAE5":d==="Waitlisted"?"#FEF3C7":d==="Rejected"?"#FEE2E2":"var(--frost)";
+  const decFg = d => d==="Accepted"?"#065F46":d==="Waitlisted"?"#92400E":d==="Rejected"?"#991B1B":"var(--ink3)";
+
+  if (loading) return (
+    <div style={{textAlign:"center",padding:80,color:"var(--ink3)"}}>
+      <div style={{fontSize:40,marginBottom:16}}>⏳</div>
+      <div style={{fontSize:14,fontWeight:600}}>Loading data from Google Sheets...</div>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Header banner */}
+      <div style={{background:"linear-gradient(135deg,#1e1b4b,#312e81)",borderRadius:"var(--radL)",padding:"22px 28px",color:"white",marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"center",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",right:-20,top:-40,width:180,height:180,borderRadius:"50%",background:"rgba(255,255,255,.04)"}}/>
+        <div style={{position:"relative"}}>
+          <div style={{background:"rgba(255,255,255,.12)",fontSize:10,fontWeight:700,padding:"4px 12px",borderRadius:20,letterSpacing:".5px",display:"inline-block",marginBottom:8}}>PRO ADMIN · READ-ONLY ANALYTICS</div>
+          <div style={{fontFamily:"Fraunces,serif",fontSize:20,letterSpacing:"-.3px",marginTop:4}}>Filtration Analytics Center</div>
+          <div style={{fontSize:12,opacity:.7,marginTop:4}}>{apps.length} applicants · {reviews.length} reviews · {reviewers.length} reviewer{reviewers.length!==1?"s":""}</div>
+        </div>
+        <div style={{display:"flex",gap:24,position:"relative"}}>
+          {[[accepted,"Accepted","#86EFAC"],[waitlisted,"Waitlisted","#FCD34D"],[rejected,"Rejected","#F87171"],[pending,"Pending","#94A3B8"]].map(([v,l,c])=>(
+            <div key={l} style={{textAlign:"center"}}>
+              <div style={{fontFamily:"Fraunces,serif",fontSize:28,color:c,letterSpacing:"-1px"}}>{v}</div>
+              <div style={{fontSize:10,opacity:.65,marginTop:2}}>{l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="tabs" style={{marginBottom:20}}>
+        {[["overview","📊 Overview"],["applicants","📋 All Applicants"],["reviewers","👤 Reviewers"],["charts","📈 Charts"]].map(([id,label])=>(
+          <button key={id} className={"tab "+(tab===id?"active":"")} onClick={()=>setTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      {/* ── OVERVIEW TAB ── */}
+      {tab==="overview" && (
+        <div>
+          <div className="g2 mb6">
+            {/* Decision breakdown donut-style */}
+            <div className="card">
+              <div className="card-header"><div className="card-title">Decision Breakdown</div></div>
+              <div className="card-body">
+                {[["Accepted",accepted,"#0F9F6E"],["Waitlisted",waitlisted,"#E8860A"],["Rejected",rejected,"#E53E5C"],["Pending",pending,"#C7D2EC"]].map(([label,val,color])=>(
+                  <div key={label} style={{marginBottom:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                      <span style={{fontSize:12,fontWeight:600}}>{label}</span>
+                      <span style={{fontFamily:"DM Mono,monospace",fontSize:12,fontWeight:700,color}}>{val} <span style={{fontWeight:400,color:"var(--ink3)",fontSize:10}}>({apps.length?Math.round(val/apps.length*100):0}%)</span></span>
+                    </div>
+                    <div style={{height:8,background:"var(--frost)",borderRadius:4,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:(apps.length?val/apps.length*100:0)+"%",background:color,borderRadius:4,transition:"width .5s"}}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* GPA distribution */}
+            <div className="card">
+              <div className="card-header"><div className="card-title">GPA Distribution</div></div>
+              <div className="card-body">
+                {Object.entries(gpaBuckets).map(([range,count])=>(
+                  <div key={range} style={{marginBottom:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                      <span style={{fontSize:12,fontWeight:600}}>{range}</span>
+                      <span style={{fontFamily:"DM Mono,monospace",fontSize:12}}>{count}</span>
+                    </div>
+                    <div style={{height:8,background:"var(--frost)",borderRadius:4,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:(count/maxGpa*100)+"%",background:"linear-gradient(90deg,var(--violet),var(--azure))",borderRadius:4,transition:"width .5s"}}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Track distribution chart */}
+          <div className="card mb6">
+            <div className="card-header"><div className="card-title">Track Preference Distribution</div></div>
+            <div className="card-body">
+              <div style={{display:"flex",gap:8,alignItems:"flex-end",height:120,padding:"0 8px"}}>
+                {Object.entries(trackCounts).map(([track,count])=>(
+                  <div key={track} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:10,fontWeight:700,color:"var(--violet)"}}>{count}</span>
+                    <div style={{width:"100%",background:"linear-gradient(180deg,var(--violet),var(--azure))",borderRadius:"4px 4px 0 0",transition:"height .5s",height:Math.max(8,count/maxTrack*90)+"px"}}/>
+                    <span style={{fontSize:9,color:"var(--ink3)",textAlign:"center",lineHeight:1.2,wordBreak:"break-word"}}>{track.length>20?track.slice(0,18)+"...":track}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Reviewer summary */}
+          <div className="card">
+            <div className="card-header"><div className="card-title">Reviewer Activity Summary</div></div>
+            <div className="card-body" style={{padding:0}}>
+              <table className="tbl">
+                <thead><tr><th>Reviewer</th><th>Reviews</th><th>Accepted</th><th>Waitlisted</th><th>Rejected</th><th>Avg Score</th></tr></thead>
+                <tbody>{reviewers.map((rv,i)=>(
+                  <tr key={i}>
+                    <td style={{fontWeight:700}}>{rv.name}</td>
+                    <td className="mono">{rv.total}</td>
+                    <td><span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"#D1FAE5",color:"#065F46"}}>{rv.accepted}</span></td>
+                    <td><span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"#FEF3C7",color:"#92400E"}}>{rv.waitlisted}</span></td>
+                    <td><span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"#FEE2E2",color:"#991B1B"}}>{rv.rejected}</span></td>
+                    <td style={{fontFamily:"DM Mono,monospace",fontWeight:700,color:"var(--violet)"}}>{rv.avgScore}/100</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── APPLICANTS TAB ── */}
+      {tab==="applicants" && (
+        <div>
+          <div className="card">
+            <div className="card-header">
+              <div><div className="card-title">All Applicants with Reviews</div><div className="card-sub">{apps.length} total</div></div>
+            </div>
+            <div className="card-body" style={{padding:0}}>
+              <table className="tbl">
+                <thead><tr><th>Name</th><th>University</th><th>GPA</th><th>Track</th><th>Reviews</th><th>Consensus</th><th>Avg Score</th></tr></thead>
+                <tbody>{apps.map((a,i)=>{
+                  const appRevs = reviews.filter(r=>(r["applicationEmail"]||r["ApplicationEmail"]||"").toLowerCase()===(a["Email"]||"").toLowerCase());
+                  const scores = appRevs.map(r=>parseFloat(r["score"]||r["Score"]||0)).filter(Boolean);
+                  const avgSc = scores.length?Math.round(scores.reduce((x,y)=>x+y,0)/scores.length):0;
+                  const top = getDecision(a["Email"]);
+                  return (
+                    <tr key={i}>
+                      <td>
+                        <div style={{fontWeight:700,fontSize:13}}>{a["Name"]||"—"}</div>
+                        <div style={{fontSize:11,color:"var(--ink3)"}}>{a["Email"]}</div>
+                      </td>
+                      <td style={{fontSize:12,color:"var(--ink3)"}}>{(a["University"]||"").slice(0,25)}</td>
+                      <td className="mono" style={{fontWeight:700}}>{a["GPA"]||"—"}</td>
+                      <td style={{fontSize:11,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(a["Target Track"]||"").split(",")[0]}</td>
+                      <td className="mono">{appRevs.length}</td>
+                      <td><span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:decBg(top),color:decFg(top)}}>{top}</span></td>
+                      <td style={{fontFamily:"DM Mono,monospace",fontWeight:700,color:avgSc>=75?"#065F46":avgSc>=50?"#92400E":avgSc?"#991B1B":"var(--mist)"}}>{avgSc?avgSc+"/100":"-"}</td>
+                    </tr>
+                  );
+                })}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── REVIEWERS TAB ── */}
+      {tab==="reviewers" && (
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          {reviewers.length===0 && (
+            <div className="card"><div className="card-body" style={{textAlign:"center",padding:48,color:"var(--ink3)"}}>No reviews submitted yet.</div></div>
+          )}
+          {reviewers.map((rv,ri)=>{
+            const rvReviews = reviews.filter(r=>(r["reviewerName"]||r["ReviewerName"]||r["reviewerEmail"]||r["ReviewerEmail"]||"")=== rv.name);
+            return (
+              <div key={ri} className="card">
+                <div className="card-header">
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,var(--violet),var(--azure))",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:800,fontSize:15}}>
+                      {rv.name.split(" ").map(n=>n[0]).join("").slice(0,2).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="card-title">{rv.name}</div>
+                      <div className="card-sub">{rv.total} reviews · avg score {rv.avgScore}/100</div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    {[[rv.accepted,"Accepted","#D1FAE5","#065F46"],[rv.waitlisted,"Waitlisted","#FEF3C7","#92400E"],[rv.rejected,"Rejected","#FEE2E2","#991B1B"]].map(([v,l,bg,fg])=>(
+                      <div key={l} style={{padding:"6px 12px",borderRadius:8,background:bg,textAlign:"center"}}>
+                        <div style={{fontFamily:"Fraunces,serif",fontSize:20,color:fg}}>{v}</div>
+                        <div style={{fontSize:9,fontWeight:700,color:fg,marginTop:1}}>{l}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="card-body" style={{padding:0}}>
+                  <table className="tbl">
+                    <thead><tr><th>Applicant</th><th>Decision</th><th>Score</th><th>Notes</th><th>Reviewed</th></tr></thead>
+                    <tbody>{rvReviews.map((rev,j)=>{
+                      const dec = rev["decision"]||rev["Decision"]||"Pending";
+                      return (
+                        <tr key={j}>
+                          <td>
+                            <div style={{fontWeight:600,fontSize:13}}>{rev["applicantName"]||rev["ApplicantName"]||rev["applicationEmail"]||rev["ApplicationEmail"]||"Unknown"}</div>
+                            <div style={{fontSize:10,color:"var(--ink3)"}}>{rev["applicationEmail"]||rev["ApplicationEmail"]}</div>
+                          </td>
+                          <td><span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:decBg(dec),color:decFg(dec)}}>{dec}</span></td>
+                          <td style={{fontFamily:"DM Mono,monospace",fontWeight:700,color:"var(--violet)"}}>{rev["score"]||rev["Score"]||"—"}/100</td>
+                          <td style={{fontSize:11,color:"var(--ink2)",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:rev["note"]||rev["Note"]?"italic":"normal"}}>{rev["note"]||rev["Note"]||<span style={{color:"var(--mist)"}}>No notes</span>}</td>
+                          <td style={{fontSize:11,color:"var(--ink3)"}}>{rev["reviewedAt"]||rev["ReviewedAt"]?new Date(rev["reviewedAt"]||rev["ReviewedAt"]).toLocaleDateString():"—"}</td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── CHARTS TAB ── */}
+      {tab==="charts" && (
+        <div>
+          <div className="g2 mb6">
+            {/* Score distribution */}
+            <div className="card">
+              <div className="card-header"><div className="card-title">Score Distribution</div><div className="card-sub">All submitted reviews</div></div>
+              <div className="card-body">
+                {[["90-100",reviews.filter(r=>parseFloat(r["score"]||r["Score"]||0)>=90).length,"#0F9F6E"],["75-89",reviews.filter(r=>{const s=parseFloat(r["score"]||r["Score"]||0);return s>=75&&s<90}).length,"#3B82F6"],["55-74",reviews.filter(r=>{const s=parseFloat(r["score"]||r["Score"]||0);return s>=55&&s<75}).length,"#E8860A"],["<55",reviews.filter(r=>parseFloat(r["score"]||r["Score"]||0)<55&&parseFloat(r["score"]||r["Score"]||0)>0).length,"#E53E5C"]].map(([range,count,color])=>{
+                  const pct = reviews.length?Math.round(count/reviews.length*100):0;
+                  return (
+                    <div key={range} style={{marginBottom:14}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                        <span style={{fontSize:12,fontWeight:600}}>{range} pts</span>
+                        <span style={{fontSize:12,fontWeight:700,color}}>{count} <span style={{color:"var(--ink3)",fontWeight:400,fontSize:10}}>({pct}%)</span></span>
+                      </div>
+                      <div style={{height:10,background:"var(--frost)",borderRadius:5,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:pct+"%",background:color,borderRadius:5,transition:"width .5s"}}/>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Reviewer agreement */}
+            <div className="card">
+              <div className="card-header"><div className="card-title">Reviewer Agreement</div><div className="card-sub">How often reviewers agree</div></div>
+              <div className="card-body">
+                {apps.filter(a=>{
+                  const appRevs = reviews.filter(r=>(r["applicationEmail"]||r["ApplicationEmail"]||"").toLowerCase()===(a["Email"]||"").toLowerCase());
+                  return appRevs.length>=2;
+                }).slice(0,8).map((a,i)=>{
+                  const appRevs = reviews.filter(r=>(r["applicationEmail"]||r["ApplicationEmail"]||"").toLowerCase()===(a["Email"]||"").toLowerCase());
+                  const decs = [...new Set(appRevs.map(r=>(r["decision"]||r["Decision"]||"").toLowerCase().split("ed")[0]))];
+                  const agree = decs.length===1;
+                  return (
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid var(--frost)"}}>
+                      <span style={{fontSize:12,fontWeight:600}}>{(a["Name"]||"").split(" ")[0]} {(a["Name"]||"").split(" ")[1]?.(a["Name"]||"").split(" ")[1][0]+".":""}</span>
+                      <div style={{display:"flex",gap:4}}>
+                        {appRevs.map((rev,j)=>{
+                          const d = rev["decision"]||rev["Decision"]||"";
+                          return <span key={j} style={{padding:"2px 7px",borderRadius:20,fontSize:9,fontWeight:700,background:decBg(d),color:decFg(d)}}>{d.slice(0,3)}</span>;
+                        })}
+                      </div>
+                      <span style={{fontSize:10,fontWeight:700,color:agree?"#065F46":"#E8860A"}}>{agree?"✓ Agree":"⚠ Differ"}</span>
+                    </div>
+                  );
+                })}
+                {apps.filter(a=>reviews.filter(r=>(r["applicationEmail"]||r["ApplicationEmail"]||"").toLowerCase()===(a["Email"]||"").toLowerCase()).length>=2).length===0 && (
+                  <div style={{color:"var(--ink3)",fontSize:12,textAlign:"center",padding:24}}>Need 2+ reviews per applicant to compare</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* University breakdown */}
+          <div className="card">
+            <div className="card-header"><div className="card-title">University Breakdown</div></div>
+            <div className="card-body">
+              {(() => {
+                const unis = {};
+                apps.forEach(a=>{const u=(a["University"]||"").trim()||"Unknown";unis[u]=(unis[u]||0)+1;});
+                const sorted = Object.entries(unis).sort((a,b)=>b[1]-a[1]).slice(0,10);
+                const maxU = sorted[0]?.[1]||1;
+                return sorted.map(([uni,count])=>(
+                  <div key={uni} style={{marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                      <span style={{fontSize:12,fontWeight:500}}>{uni}</span>
+                      <span style={{fontSize:12,fontWeight:700,color:"var(--violet)"}}>{count}</span>
+                    </div>
+                    <div style={{height:6,background:"var(--frost)",borderRadius:3,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:(count/maxU*100)+"%",background:"linear-gradient(90deg,var(--violet),var(--azure))",borderRadius:3}}/>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────
 function ProfileView({ user }) {
   const { updateUser, pushToSheets } = useContext(DataCtx);
@@ -2829,6 +3133,12 @@ function AppShell() {
       { id:"sheets",       icon:"📊", label:"Sheets Config" },
       { id:"profile",      icon:"👤", label:"My Profile" },
     ],
+    [ROLES.PROADMIN]: [
+      { id:"dashboard",    icon:"🏠", label:"Dashboard" },
+      { id:"analytics",    icon:"📊", label:"Review Analytics" },
+      { id:"filtration",   icon:"🔍", label:"Filtration Center" },
+      { id:"profile",      icon:"👤", label:"My Profile" },
+    ],
   };
 
   const titles = {
@@ -2837,6 +3147,7 @@ function AppShell() {
     mentees:"My Mentees",meetings:"Meeting Scheduler",review:"Paper Review",
     users:"User Management",filtration:"Filtration Center",assignment:"Track Assignment Engine",
     resources_mgmt:"Resource Management",metrics:"Metrics Dashboard",sheets:"Sheets Config",
+    analytics:"Review Analytics",
     profile:"My Profile",
   };
 
@@ -2854,12 +3165,16 @@ function AppShell() {
       const map = { dashboard:<AdminDashboard user={user}/>, users:<AdminUsers/>, filtration:<AdminFiltration/>, assignment:<AdminTrackAssignment/>, resources_mgmt:<AdminResourceMgmt/>, metrics:<AdminMetrics/>, sheets:<AdminSheetsConfig/> };
       return map[nav]||<AdminDashboard user={user}/>;
     }
-    // Fallback — unknown role, show raw user data to help debug
+    if (userRole===ROLES.PROADMIN) {
+      const map = { dashboard:<ProAdminDashboard/>, analytics:<ProAdminDashboard/>, filtration:<AdminFiltration/> };
+      return map[nav]||<ProAdminDashboard/>;
+    }
+    // Fallback
     return (
       <div style={{padding:24}}>
         <div style={{background:"#FEF3C7",border:"1px solid #FDE68A",borderRadius:12,padding:20,fontSize:13,color:"#92400E"}}>
           <b>⚠ Unknown role: "{userRole}"</b><br/>
-          Your Users sheet must have a <code>role</code> column with value: <code>superadmin</code>, <code>mentor</code>, or <code>participant</code> (lowercase).<br/><br/>
+          Your Users sheet must have a <code>role</code> column with value: <code>superadmin</code>, <code>mentor</code>, <code>participant</code>, or <code>proadmin</code> (lowercase).<br/><br/>
           <b>Your user data from Sheets:</b><br/>
           <pre style={{marginTop:8,fontSize:11,background:"white",padding:10,borderRadius:8,overflow:"auto"}}>{JSON.stringify(user, null, 2)}</pre>
         </div>
