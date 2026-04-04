@@ -563,8 +563,25 @@ function AuthProvider({ children }) {
   };
 
   // Always reflect latest data from users list (so profile edits show live)
+  // Reflect profile edits live (e.g. name change), but NEVER let the users
+  // array overwrite the authenticated user's role, id, or email — those come
+  // from the session established at login and are the source of truth.
+  // Only merge if the id is a non-empty exact match, so a missing/blank id
+  // in the Users sheet can never cause a wrong-user substitution.
   const refreshedUser = user
-    ? (users.find(u => u.id === user.id) || user)
+    ? (() => {
+        const sessionId = user.id;
+        const matched = (sessionId !== undefined && sessionId !== null && sessionId !== "")
+          ? users.find(u => u.id === sessionId)
+          : null;
+        if (!matched) return user; // no match → keep session as-is
+        return {
+          ...matched,          // latest sheet data
+          id:       user.id,   // never change identity
+          email:    user.email,// never change email
+          role:     user.role, // ← CRITICAL: role always comes from login session
+        };
+      })()
     : null;
 
   return (
