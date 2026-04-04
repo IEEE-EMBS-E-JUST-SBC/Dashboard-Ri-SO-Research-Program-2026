@@ -1784,10 +1784,8 @@ Return ONLY valid JSON: {"scores": {"academic": <0-15>, "programming": <0-15>, "
     setSaveError("");
     
     try {
-      const reviewId = existingDecision?.reviewId || `R${Date.now()}`;
-      
       const reviewData = {
-        reviewId: reviewId,
+        reviewId: existingDecision?.reviewId || `R${Date.now()}`,
         applicationEmail: app["Email"],
         applicantName: app["Name"],
         reviewerEmail: adminEmail,
@@ -1796,28 +1794,39 @@ Return ONLY valid JSON: {"scores": {"academic": <0-15>, "programming": <0-15>, "
         score: total,
         scores: JSON.stringify(scores),
         note: adminNote,
-        selectedTracks: JSON.stringify(selectedTracks), // Save tracks
+        selectedTracks: JSON.stringify(selectedTracks),
         aiRecommendation: aiFeedback?.recommendation || "",
         reviewedAt: new Date().toISOString()
       };
-      
+
+      // Always try to update by matching reviewerEmail + applicationEmail first.
+      // If no match exists (first review), fall through to push a new row.
+      const compositeMatchCol = "reviewerEmail";
+      // We need BOTH reviewerEmail AND applicationEmail to match uniquely.
+      // Strategy: use updateByMatch on a composite — or use updateByMatch on reviewId if exists.
       if (existingDecision?.reviewId) {
-        await sheetsAPI.update("Reviews", reviewId, reviewData);
+        // Update existing row by its reviewId
+        const res = await sheetsAPI.updateByMatch("Reviews", "reviewId", existingDecision.reviewId, reviewData);
+        if (!res || res.status === "error" || !res.matched) {
+          // Fallback: push as new if match failed
+          await pushToSheets("Reviews", reviewData);
+        }
       } else {
+        // New review — push fresh row
         await pushToSheets("Reviews", reviewData);
       }
-      
+
+      // Update the Applications row to reflect latest overall status
       await sheetsAPI.updateByMatch("Applications", "Email", app["Email"], {
         "Status": `Phase II: ${finalDec}`,
         "LastReviewedBy": adminName,
         "LastReviewedAt": new Date().toISOString(),
-        "ReviewCount": (allReviews?.length || 0) + (existingDecision ? 0 : 1)
       });
       
       setDecision(finalDec);
       setSaved(true);
       onDecision(app["Email"], finalDec, total);
-      showToast(`✓ Review saved to Reviews sheet`);
+      showToast(existingDecision?.reviewId ? `✓ Review updated in Reviews sheet` : `✓ Review saved to Reviews sheet`);
       
     } catch(e) {
       setSaved(false);
@@ -2076,6 +2085,7 @@ function AdminFiltration() {
                 score: r["score"] || r["Score"] || 0,
                 note: r["note"] || r["Note"] || "",
                 scores: r["scores"] || r["Scores"] || "",
+                selectedTracks: r["selectedTracks"] || r["SelectedTracks"] || "",
                 aiRecommendation: r["aiRecommendation"] || r["AiRecommendation"] || "",
                 reviewedAt: r["reviewedAt"] || r["ReviewedAt"] || ""
               };
@@ -2510,15 +2520,58 @@ function AdminSheetsConfig() {
 //  PROFILE VIEW (all roles)
 
 // =============================================================
+//  MCQ QUESTIONS — Correct answers defined here
+// =============================================================
+const MCQ_QUESTIONS = [
+  {
+    id: "Q1",
+    question: "In machine learning, what is the primary purpose of cross-validation?",
+    options: ["A) To increase training speed.", "B) To assess generalization and prevent overfitting.", "C) To automatically clean missing data.", "D) I don't know yet."],
+    correct: "B",
+    explanation: "Cross-validation evaluates how well a model generalizes to unseen data by testing on held-out folds, preventing overfitting."
+  },
+  {
+    id: "Q2",
+    question: "In biosignal processing, what does a High-Pass filter do?",
+    options: ["A) It amplifies the overall signal voltage.", "B) It allows low frequencies to pass while attenuating high ones.", "C) It allows high frequencies to pass while removing baseline wander.", "D) I don't know yet."],
+    correct: "C",
+    explanation: "A high-pass filter passes frequencies above a cutoff, removing slow baseline drift (wander) common in ECG/EEG signals."
+  },
+  {
+    id: "Q3",
+    question: "For a highly imbalanced medical dataset (99% healthy, 1% sick), which metric is most informative?",
+    options: ["A) Accuracy", "B) F1-Score / PR-AUC", "C) Mean Squared Error (MSE)", "D) I don't know yet."],
+    correct: "B",
+    explanation: "Accuracy is misleading (99% by always predicting healthy). F1-Score and PR-AUC properly capture performance on the rare positive class."
+  },
+];
+
+function getMCQScore(app) {
+  // Reads Q1Answer, Q2Answer, Q3Answer columns from Applications sheet
+  const answers = [
+    (app["Q1Answer"] || app["Q1 Answer"] || app["MCQ1"] || "").toString().trim().toUpperCase(),
+    (app["Q2Answer"] || app["Q2 Answer"] || app["MCQ2"] || "").toString().trim().toUpperCase(),
+    (app["Q3Answer"] || app["Q3 Answer"] || app["MCQ3"] || "").toString().trim().toUpperCase(),
+  ];
+  let correct = 0;
+  answers.forEach((ans, i) => {
+    const letter = ans.charAt(0);
+    if (letter === MCQ_QUESTIONS[i].correct) correct++;
+  });
+  return { answers, correct, total: 3 };
+}
+
+// =============================================================
 //  PRO ADMIN DASHBOARD — Full Review Analytics + Filtration
 // =============================================================
 
 function ProAdminDashboard() {
-  const { syncStatus } = useContext(DataCtx);
+  const { user } = useContext(AuthCtx); // ← use logged-in proadmin's OWN identity
   const [apps, setApps]       = useState([]);
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab]         = useState("overview");
+  const [searchApp, setSearchApp] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -2547,6 +2600,7 @@ function ProAdminDashboard() {
   const rejected   = apps.filter(a=>getDecision(a["Email"])==="Rejected").length;
   const pending    = apps.filter(a=>getDecision(a["Email"])==="Pending").length;
 
+  // ── Reviewer analytics ──
   const reviewerMap = {};
   reviews.forEach(r => {
     const name = r["reviewerName"]||r["ReviewerName"]||r["reviewerEmail"]||r["ReviewerEmail"]||"Unknown";
@@ -2563,114 +2617,351 @@ function ProAdminDashboard() {
     ...rv, avgScore: rv.scores.length ? Math.round(rv.scores.reduce((a,b)=>a+b,0)/rv.scores.length) : 0
   }));
 
+  // ── Aggregations ──
   const trackCounts = {};
   const countryCounts = {};
   const timelineCounts = {};
-  const gpaBuckets = { "3.5+":0, "3.0-3.5":0, "2.5-3.0":0, "<2.5":0 };
+  const yearCounts = {};
+  const gpaBuckets = { "3.5+":0, "3.0–3.5":0, "2.5–3.0":0, "<2.5":0 };
+  const mcqScoreCounts = {0:0, 1:0, 2:0, 3:0};
+  const facultyCounts = {};
+  const genderCounts = {};
+  let totalGpa = 0, gpaCount = 0;
+  let allScores = reviews.map(r=>parseFloat(r["score"]||r["Score"]||0)).filter(Boolean);
 
   apps.forEach(a => {
     const t = (a["Target Track"]||"").split(",")[0].trim()||"Unknown";
     trackCounts[t] = (trackCounts[t]||0)+1;
-    
-    // Country logic
+
     const c = (a["Country"] || a["Nationality"] || "Unknown").trim();
     countryCounts[c] = (countryCounts[c]||0)+1;
 
-    // Timeline logic
+    const yr = (a["Academic Year"]||"Unknown").trim();
+    yearCounts[yr] = (yearCounts[yr]||0)+1;
+
+    const fac = (a["Faculty"]||"Unknown").trim();
+    facultyCounts[fac] = (facultyCounts[fac]||0)+1;
+
+    const gen = (a["Gender"]||"Not Specified").trim();
+    genderCounts[gen] = (genderCounts[gen]||0)+1;
+
     if(a["Timestamp"]) {
-       const d = new Date(a["Timestamp"]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-       timelineCounts[d] = (timelineCounts[d]||0)+1;
+      const d = new Date(a["Timestamp"]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      timelineCounts[d] = (timelineCounts[d]||0)+1;
     }
 
     const g = parseFloat(a["GPA"])||0;
+    if (g>0) { totalGpa+=g; gpaCount++; }
     if (g>=3.5) gpaBuckets["3.5+"]++;
-    else if (g>=3.0) gpaBuckets["3.0-3.5"]++;
-    else if (g>=2.5) gpaBuckets["2.5-3.0"]++;
-    else gpaBuckets["<2.5"]++;
+    else if (g>=3.0) gpaBuckets["3.0–3.5"]++;
+    else if (g>=2.5) gpaBuckets["2.5–3.0"]++;
+    else if (g>0) gpaBuckets["<2.5"]++;
+
+    const mcq = getMCQScore(a);
+    mcqScoreCounts[mcq.correct] = (mcqScoreCounts[mcq.correct]||0)+1;
   });
 
-  const maxGpa = Math.max(...Object.values(gpaBuckets), 1);
+  const avgGpa = gpaCount ? (totalGpa/gpaCount).toFixed(2) : "—";
+  const avgScore = allScores.length ? Math.round(allScores.reduce((a,b)=>a+b,0)/allScores.length) : 0;
   const maxTrack = Math.max(...Object.values(trackCounts), 1);
   const maxCountry = Math.max(...Object.values(countryCounts), 1);
+  const maxYear = Math.max(...Object.values(yearCounts), 1);
   const maxTimeline = Math.max(...Object.values(timelineCounts), 1);
+  const maxFaculty = Math.max(...Object.values(facultyCounts), 1);
+  const maxGpa = Math.max(...Object.values(gpaBuckets), 1);
+  const maxMcq = Math.max(...Object.values(mcqScoreCounts), 1);
 
   const decBg = d => d==="Accepted"?"#D1FAE5":d==="Waitlisted"?"#FEF3C7":d==="Rejected"?"#FEE2E2":"var(--frost)";
   const decFg = d => d==="Accepted"?"#065F46":d==="Waitlisted"?"#92400E":d==="Rejected"?"#991B1B":"var(--ink3)";
 
-  if (loading) return <div style={{textAlign:"center",padding:80,color:"var(--ink3)"}}><div style={{fontSize:40,marginBottom:16}}>⏳</div><div style={{fontSize:14,fontWeight:600}}>Loading data from Google Sheets...</div></div>;
+  const CHART_COLORS = ["#5B3BF5","#1A6DFF","#0EA5C5","#0F9F6E","#E8860A","#E53E5C","#8B5CF6","#06B6D4","#10B981","#F59E0B"];
+
+  const BarChart = ({ data, maxVal, color = "var(--r1)", height = 140, labelKey, valueKey }) => {
+    const entries = Object.entries(data).sort((a,b)=>b[1]-a[1]);
+    return (
+      <div style={{display:"flex",alignItems:"flex-end",gap:6,height,padding:"0 4px",overflowX:"auto"}}>
+        {entries.map(([label, val], i) => (
+          <div key={label} style={{flex:"0 0 auto",minWidth:36,display:"flex",flexDirection:"column",alignItems:"center",gap:3}} title={`${label}: ${val}`}>
+            <span style={{fontSize:9,fontWeight:700,color:"var(--ink2)"}}>{val}</span>
+            <div style={{width:32,background:typeof color==="string"?color:CHART_COLORS[i%CHART_COLORS.length],borderRadius:"4px 4px 0 0",height:Math.max(6,val/maxVal*(height-30))+"px",transition:"height .4s"}}/>
+            <span style={{fontSize:8,color:"var(--ink3)",textAlign:"center",maxWidth:42,lineHeight:1.2,wordBreak:"break-word",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:36}}>{label.length>8?label.slice(0,7)+"…":label}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const DonutSlice = ({ data, size=120 }) => {
+    const entries = Object.entries(data).filter(([,v])=>v>0);
+    const total = entries.reduce((s,[,v])=>s+v,0);
+    if (!total) return <div style={{width:size,height:size,borderRadius:"50%",background:"var(--frost)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"var(--ink3)"}}>No data</div>;
+    let offset = 0;
+    const r = size/2 - 10;
+    const cx = size/2, cy = size/2;
+    const circles = entries.map(([label, val], i) => {
+      const pct = val/total;
+      const dashArray = 2*Math.PI*r;
+      const dash = pct*dashArray;
+      const gap = dashArray - dash;
+      const el = <circle key={label} cx={cx} cy={cy} r={r} fill="none" stroke={CHART_COLORS[i%CHART_COLORS.length]} strokeWidth={18} strokeDasharray={`${dash} ${gap}`} strokeDashoffset={-offset*dashArray} style={{transform:`rotate(-90deg)`,transformOrigin:`${cx}px ${cy}px`}}/>;
+      offset += pct;
+      return el;
+    });
+    return (
+      <div style={{position:"relative",width:size,height:size}}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>{circles}</svg>
+        <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+          <div style={{fontSize:18,fontWeight:800,color:"var(--ink)"}}>{total}</div>
+          <div style={{fontSize:8,color:"var(--ink3)"}}>total</div>
+        </div>
+      </div>
+    );
+  };
+
+  const filteredApps = apps.filter(a =>
+    !searchApp || (a["Name"]||"").toLowerCase().includes(searchApp.toLowerCase()) ||
+    (a["Email"]||"").toLowerCase().includes(searchApp.toLowerCase()) ||
+    (a["University"]||"").toLowerCase().includes(searchApp.toLowerCase())
+  );
+
+  if (loading) return (
+    <div style={{textAlign:"center",padding:80,color:"var(--ink3)"}}>
+      <div style={{fontSize:40,marginBottom:16}}>⏳</div>
+      <div style={{fontSize:14,fontWeight:600}}>Loading from Google Sheets…</div>
+    </div>
+  );
 
   return (
     <div>
+      {/* ── HEADER BANNER ── */}
       <div style={{background:"linear-gradient(135deg,#1e1b4b,#312e81)",borderRadius:"var(--radL)",padding:"22px 28px",color:"white",marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"center",position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",right:-20,top:-40,width:180,height:180,borderRadius:"50%",background:"rgba(255,255,255,.04)"}}/>
+        <div style={{position:"absolute",right:-20,top:-40,width:200,height:200,borderRadius:"50%",background:"rgba(255,255,255,.04)"}}/>
+        <div style={{position:"absolute",right:80,bottom:-60,width:140,height:140,borderRadius:"50%",background:"rgba(255,255,255,.03)"}}/>
         <div style={{position:"relative"}}>
           <div style={{background:"rgba(255,255,255,.12)",fontSize:10,fontWeight:700,padding:"4px 12px",borderRadius:20,letterSpacing:".5px",display:"inline-block",marginBottom:8}}>PRO ADMIN · READ-ONLY ANALYTICS</div>
-          <div style={{fontFamily:"Fraunces,serif",fontSize:20,letterSpacing:"-.3px",marginTop:4}}>Filtration Analytics Center</div>
+          <div style={{fontFamily:"Fraunces,serif",fontSize:22,letterSpacing:"-.3px",marginTop:4}}>Filtration Analytics Center</div>
           <div style={{fontSize:12,opacity:.7,marginTop:4}}>{apps.length} applicants · {reviews.length} reviews · {reviewers.length} reviewer{reviewers.length!==1?"s":""}</div>
+          <div style={{fontSize:10,opacity:.55,marginTop:6}}>Signed in as: {user?.name||user?.Name||user?.email||"—"} ({user?.email||"—"})</div>
         </div>
-        <div style={{display:"flex",gap:24,position:"relative"}}>
+        <div style={{display:"flex",gap:20,position:"relative",flexWrap:"wrap"}}>
           {[[accepted,"Accepted","#86EFAC"],[waitlisted,"Waitlisted","#FCD34D"],[rejected,"Rejected","#F87171"],[pending,"Pending","#94A3B8"]].map(([v,l,c])=>(
             <div key={l} style={{textAlign:"center"}}><div style={{fontFamily:"Fraunces,serif",fontSize:28,color:c,letterSpacing:"-1px"}}>{v}</div><div style={{fontSize:10,opacity:.65,marginTop:2}}>{l}</div></div>
           ))}
         </div>
       </div>
 
+      {/* ── KPI ROW ── */}
+      <div className="g4 mb6">
+        {[
+          {icon:"📊",val:apps.length,label:"Total Applications"},
+          {icon:"🎓",val:avgGpa,label:"Average GPA"},
+          {icon:"🏆",val:avgScore?avgScore+"/100":"—",label:"Avg Review Score"},
+          {icon:"👥",val:reviewers.length,label:"Active Reviewers"},
+        ].map((s,i)=>(
+          <div key={i} className="stat"><div className="stat-icon">{s.icon}</div><div className="stat-val" style={{fontSize:24}}>{s.val}</div><div className="stat-label">{s.label}</div></div>
+        ))}
+      </div>
+
+      {/* ── TABS ── */}
       <div className="tabs" style={{marginBottom:20}}>
-        {[["overview","📊 Overview"],["applicants","📋 All Applicants"],["reviewers","👤 Reviewers"],["charts","📈 Charts"]].map(([id,label])=>(
+        {[["overview","📊 Overview"],["demographics","🌍 Demographics"],["mcq","🧠 MCQ Analysis"],["reviewers","👤 Reviewers"],["applicants","📋 All Applicants"]].map(([id,label])=>(
           <button key={id} className={"tab "+(tab===id?"active":"")} onClick={()=>setTab(id)}>{label}</button>
         ))}
       </div>
 
+      {/* ════════════════════════════════════════ */}
       {tab==="overview" && (
         <div>
+          {/* Decision + Timeline */}
           <div className="g2 mb6">
             <div className="card">
-              <div className="card-header"><div className="card-title">Decision Breakdown</div></div>
+              <div className="card-header"><div><div className="card-title">Decision Breakdown</div><div className="card-sub">{apps.length} total applicants</div></div></div>
               <div className="card-body">
-                {[["Accepted",accepted,"#0F9F6E"],["Waitlisted",waitlisted,"#E8860A"],["Rejected",rejected,"#E53E5C"],["Pending",pending,"#C7D2EC"]].map(([label,val,color])=>(
-                  <div key={label} style={{marginBottom:12}}>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,fontWeight:600}}>{label}</span><span style={{fontFamily:"DM Mono,monospace",fontSize:12,fontWeight:700,color}}>{val} <span style={{fontWeight:400,color:"var(--ink3)",fontSize:10}}>({apps.length?Math.round(val/apps.length*100):0}%)</span></span></div>
-                    <div style={{height:8,background:"var(--frost)",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:(apps.length?val/apps.length*100:0)+"%",background:color,borderRadius:4,transition:"width .5s"}}/></div>
+                {[["✅ Accepted",accepted,"#0F9F6E","#D1FAE5"],["◐ Waitlisted",waitlisted,"#E8860A","#FEF3C7"],["✗ Rejected",rejected,"#E53E5C","#FEE2E2"],["⏳ Pending",pending,"#6B7DB3","#EEF2FF"]].map(([label,val,color,bg])=>(
+                  <div key={label} style={{marginBottom:14}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,alignItems:"center"}}>
+                      <span style={{fontSize:12,fontWeight:700}}>{label}</span>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{fontFamily:"DM Mono,monospace",fontSize:18,fontWeight:800,color}}>{val}</span>
+                        <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:bg,color}}>{apps.length?Math.round(val/apps.length*100):0}%</span>
+                      </div>
+                    </div>
+                    <div style={{height:10,background:"var(--frost)",borderRadius:5,overflow:"hidden"}}><div style={{height:"100%",width:(apps.length?val/apps.length*100:0)+"%",background:color,borderRadius:5,transition:"width .6s"}}/></div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="card">
-              <div className="card-header"><div className="card-title">Country Distribution</div></div>
-              <div className="card-body">
-                {Object.entries(countryCounts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([country,count])=>(
-                  <div key={country} style={{marginBottom:12}}>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,fontWeight:600}}>{country}</span><span style={{fontFamily:"DM Mono,monospace",fontSize:12}}>{count}</span></div>
-                    <div style={{height:8,background:"var(--frost)",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:(count/maxCountry*100)+"%",background:"linear-gradient(90deg,var(--jade),var(--teal))",borderRadius:4,transition:"width .5s"}}/></div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="g2 mb6">
             <div className="card">
               <div className="card-header"><div className="card-title">Submission Timeline</div></div>
-              <div className="card-body" style={{display:"flex",alignItems:"flex-end",gap:4,height:160,padding:"0 16px"}}>
-                {Object.entries(timelineCounts).map(([date,count])=>(
-                  <div key={date} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}} title={`${date}: ${count} applications`}>
-                    <span style={{fontSize:9,fontWeight:700,color:"var(--ink3)"}}>{count}</span>
-                    <div style={{width:"100%",background:"var(--r1)",borderRadius:"4px 4px 0 0",height:Math.max(8,count/maxTimeline*120)+"px"}}/>
-                    <span style={{fontSize:8,color:"var(--ink3)",writingMode:"vertical-rl",transform:"rotate(180deg)",marginTop:4}}>{date}</span>
+              <div className="card-body" style={{overflowX:"auto"}}>
+                {Object.keys(timelineCounts).length > 0 ? (
+                  <BarChart data={timelineCounts} maxVal={maxTimeline} color="var(--r1)" height={160}/>
+                ) : <div className="txt-muted" style={{textAlign:"center",padding:40}}>No timestamp data</div>}
+              </div>
+            </div>
+          </div>
+
+          {/* GPA + Track */}
+          <div className="g2 mb6">
+            <div className="card">
+              <div className="card-header"><div className="card-title">GPA Distribution</div></div>
+              <div className="card-body">
+                {Object.entries(gpaBuckets).map(([bucket,count],i)=>(
+                  <div key={bucket} style={{marginBottom:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                      <span style={{fontSize:12,fontWeight:700,color:i===0?"#0F9F6E":i===1?"#1A6DFF":i===2?"#E8860A":"#E53E5C"}}>{bucket}</span>
+                      <span style={{fontFamily:"DM Mono,monospace",fontSize:12,fontWeight:700}}>{count} <span style={{color:"var(--ink3)",fontWeight:400,fontSize:10}}>({apps.length?Math.round(count/apps.length*100):0}%)</span></span>
+                    </div>
+                    <div style={{height:9,background:"var(--frost)",borderRadius:5,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:(count/maxGpa*100)+"%",background:i===0?"#0F9F6E":i===1?"#1A6DFF":i===2?"#E8860A":"#E53E5C",borderRadius:5,transition:"width .5s"}}/>
+                    </div>
+                  </div>
+                ))}
+                <div style={{textAlign:"center",marginTop:16,padding:"12px",background:"var(--snow)",borderRadius:10}}>
+                  <div style={{fontSize:11,color:"var(--ink3)"}}>Cohort Average GPA</div>
+                  <div style={{fontFamily:"Fraunces,serif",fontSize:32,background:"var(--r1)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{avgGpa}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header"><div className="card-title">Target Track Preferences</div></div>
+              <div className="card-body">
+                {Object.entries(trackCounts).sort((a,b)=>b[1]-a[1]).map(([track,count],i)=>(
+                  <div key={track} style={{marginBottom:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                      <span style={{fontSize:12,fontWeight:600}}>{track}</span>
+                      <span style={{fontFamily:"DM Mono,monospace",fontSize:12,fontWeight:700}}>{count}</span>
+                    </div>
+                    <div style={{height:9,background:"var(--frost)",borderRadius:5,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:(count/maxTrack*100)+"%",background:CHART_COLORS[i%CHART_COLORS.length],borderRadius:5,transition:"width .5s"}}/>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
-            
+          </div>
+
+          {/* Review Score Distribution */}
+          <div className="card">
+            <div className="card-header"><div className="card-title">Review Score Distribution</div><div className="card-sub">Across all reviewer decisions</div></div>
+            <div className="card-body">
+              {(() => {
+                const buckets = {"0–49":0,"50–59":0,"60–69":0,"70–74":0,"75–79":0,"80–89":0,"90–100":0};
+                allScores.forEach(s=>{
+                  if(s<50) buckets["0–49"]++;
+                  else if(s<60) buckets["50–59"]++;
+                  else if(s<70) buckets["60–69"]++;
+                  else if(s<75) buckets["70–74"]++;
+                  else if(s<80) buckets["75–79"]++;
+                  else if(s<90) buckets["80–89"]++;
+                  else buckets["90–100"]++;
+                });
+                const maxB = Math.max(...Object.values(buckets),1);
+                const colors = ["#E53E5C","#E8860A","#E8860A","#1A6DFF","#0F9F6E","#0F9F6E","#0F9F6E"];
+                return (
+                  <div style={{display:"flex",gap:10,alignItems:"flex-end",height:100}}>
+                    {Object.entries(buckets).map(([range,cnt],i)=>(
+                      <div key={range} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                        <span style={{fontSize:9,fontWeight:700,color:"var(--ink2)"}}>{cnt}</span>
+                        <div style={{width:"100%",background:colors[i],borderRadius:"4px 4px 0 0",height:Math.max(4,cnt/maxB*72)+"px"}}/>
+                        <span style={{fontSize:8,color:"var(--ink3)",fontWeight:600}}>{range}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════ */}
+      {tab==="demographics" && (
+        <div>
+          <div className="g2 mb6">
+            {/* Country */}
             <div className="card">
-              <div className="card-header"><div className="card-title">Track Preference</div></div>
-              <div className="card-body" style={{display:"flex",alignItems:"flex-end",gap:8,height:160,padding:"0 8px"}}>
-                {Object.entries(trackCounts).map(([track,count])=>(
-                  <div key={track} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-                    <span style={{fontSize:10,fontWeight:700,color:"var(--violet)"}}>{count}</span>
-                    <div style={{width:"100%",background:"linear-gradient(180deg,var(--violet),var(--azure))",borderRadius:"4px 4px 0 0",height:Math.max(8,count/maxTrack*120)+"px"}}/>
-                    <span style={{fontSize:9,color:"var(--ink3)",textAlign:"center",lineHeight:1.2,wordBreak:"break-word"}}>{track.length>15?track.slice(0,12)+"...":track}</span>
+              <div className="card-header"><div className="card-title">Country of Origin</div><div className="card-sub">{Object.keys(countryCounts).length} countries</div></div>
+              <div className="card-body">
+                <div style={{display:"flex",gap:20,alignItems:"center",marginBottom:20}}>
+                  <DonutSlice data={countryCounts} size={120}/>
+                  <div style={{flex:1}}>
+                    {Object.entries(countryCounts).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([c,v],i)=>(
+                      <div key={c} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                        <div style={{width:10,height:10,borderRadius:2,background:CHART_COLORS[i%CHART_COLORS.length],flexShrink:0}}/>
+                        <span style={{fontSize:11,fontWeight:600,flex:1}}>{c}</span>
+                        <span style={{fontFamily:"DM Mono,monospace",fontSize:11,fontWeight:700}}>{v}</span>
+                        <span style={{fontSize:10,color:"var(--ink3)",minWidth:30,textAlign:"right"}}>{Math.round(v/apps.length*100)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <BarChart data={countryCounts} maxVal={maxCountry} color="" height={120}/>
+              </div>
+            </div>
+
+            {/* Year of Study */}
+            <div className="card">
+              <div className="card-header"><div className="card-title">Year of Study</div><div className="card-sub">Academic level distribution</div></div>
+              <div className="card-body">
+                <div style={{display:"flex",gap:20,alignItems:"center",marginBottom:20}}>
+                  <DonutSlice data={yearCounts} size={120}/>
+                  <div style={{flex:1}}>
+                    {Object.entries(yearCounts).sort((a,b)=>b[1]-a[1]).map(([yr,v],i)=>(
+                      <div key={yr} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                        <div style={{width:10,height:10,borderRadius:2,background:CHART_COLORS[i%CHART_COLORS.length],flexShrink:0}}/>
+                        <span style={{fontSize:11,fontWeight:600,flex:1}}>{yr}</span>
+                        <span style={{fontFamily:"DM Mono,monospace",fontSize:11,fontWeight:700}}>{v}</span>
+                        <span style={{fontSize:10,color:"var(--ink3)",minWidth:30,textAlign:"right"}}>{Math.round(v/apps.length*100)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <BarChart data={yearCounts} maxVal={maxYear} color="" height={100}/>
+              </div>
+            </div>
+          </div>
+
+          <div className="g2 mb6">
+            {/* Gender */}
+            <div className="card">
+              <div className="card-header"><div className="card-title">Gender Distribution</div></div>
+              <div className="card-body" style={{display:"flex",gap:20,alignItems:"center"}}>
+                <DonutSlice data={genderCounts} size={140}/>
+                <div style={{flex:1}}>
+                  {Object.entries(genderCounts).sort((a,b)=>b[1]-a[1]).map(([g,v],i)=>(
+                    <div key={g} style={{marginBottom:12}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                        <div style={{display:"flex",alignItems:"center",gap:7}}>
+                          <div style={{width:12,height:12,borderRadius:3,background:CHART_COLORS[i%CHART_COLORS.length]}}/>
+                          <span style={{fontSize:12,fontWeight:700}}>{g}</span>
+                        </div>
+                        <span style={{fontFamily:"DM Mono,monospace",fontWeight:700}}>{v} ({Math.round(v/apps.length*100)}%)</span>
+                      </div>
+                      <div style={{height:8,background:"var(--frost)",borderRadius:4,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:(v/apps.length*100)+"%",background:CHART_COLORS[i%CHART_COLORS.length],borderRadius:4}}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Faculty */}
+            <div className="card">
+              <div className="card-header"><div className="card-title">Faculty / Department</div></div>
+              <div className="card-body">
+                {Object.entries(facultyCounts).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([fac,cnt],i)=>(
+                  <div key={fac} style={{marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                      <span style={{fontSize:11,fontWeight:600}}>{fac}</span>
+                      <span style={{fontFamily:"DM Mono,monospace",fontSize:11,fontWeight:700}}>{cnt}</span>
+                    </div>
+                    <div style={{height:7,background:"var(--frost)",borderRadius:4,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:(cnt/maxFaculty*100)+"%",background:CHART_COLORS[i%CHART_COLORS.length],borderRadius:4}}/>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2679,33 +2970,174 @@ function ProAdminDashboard() {
         </div>
       )}
 
-      {tab==="applicants" && (
-        <div className="card">
-          <div className="card-body" style={{padding:0}}>
-            <table className="tbl">
-              <thead><tr><th>Name</th><th>Country</th><th>University</th><th>Track</th><th>Consensus</th><th>Avg Score</th></tr></thead>
-              <tbody>{apps.map((a,i)=>{
-                const appRevs = reviews.filter(r=>(r["applicationEmail"]||r["ApplicationEmail"]||"").toLowerCase()===(a["Email"]||"").toLowerCase());
-                const scores = appRevs.map(r=>parseFloat(r["score"]||r["Score"]||0)).filter(Boolean);
-                const avgSc = scores.length?Math.round(scores.reduce((x,y)=>x+y,0)/scores.length):0;
-                const top = getDecision(a["Email"]);
-                return (
-                  <tr key={i}>
-                    <td><div style={{fontWeight:700,fontSize:13}}>{a["Name"]||"—"}</div><div style={{fontSize:11,color:"var(--ink3)"}}>{a["Email"]}</div></td>
-                    <td style={{fontSize:12,fontWeight:600}}>{a["Country"]||a["Nationality"]||"—"}</td>
-                    <td style={{fontSize:12,color:"var(--ink3)"}}>{(a["University"]||"").slice(0,25)}</td>
-                    <td style={{fontSize:11}}>{(a["Target Track"]||"").split(",")[0]}</td>
-                    <td><span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:decBg(top),color:decFg(top)}}>{top}</span></td>
-                    <td style={{fontFamily:"DM Mono,monospace",fontWeight:700,color:avgSc>=75?"#065F46":avgSc>=50?"#92400E":avgSc?"#991B1B":"var(--mist)"}}>{avgSc?avgSc+"/100":"-"}</td>
-                  </tr>
-                );
-              })}</tbody>
-            </table>
+      {/* ════════════════════════════════════════ */}
+      {tab==="mcq" && (
+        <div>
+          <div className="g3 mb6">
+            {MCQ_QUESTIONS.map((q,qi)=>{
+              const letterCounts = {A:0,B:0,C:0,D:0};
+              apps.forEach(a=>{
+                const ans = (a[`Q${qi+1}Answer`]||a[`Q${qi+1} Answer`]||a[`MCQ${qi+1}`]||"").toString().trim().toUpperCase().charAt(0);
+                if (letterCounts[ans]!==undefined) letterCounts[ans]++;
+              });
+              const total = Object.values(letterCounts).reduce((s,v)=>s+v,0)||1;
+              return (
+                <div key={q.id} className="card">
+                  <div style={{background:"linear-gradient(135deg,rgba(91,59,245,.06),rgba(26,109,255,.04))",padding:"14px 18px",borderBottom:"1px solid var(--frost)"}}>
+                    <div style={{fontSize:9,fontWeight:700,color:"var(--violet)",textTransform:"uppercase",letterSpacing:.8,marginBottom:4}}>{q.id} · {["Cross-Validation","High-Pass Filter","Imbalanced Dataset"][qi]}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"var(--ink)",lineHeight:1.5}}>{q.question}</div>
+                  </div>
+                  <div className="card-body">
+                    {q.options.map((opt,oi)=>{
+                      const letter = ["A","B","C","D"][oi];
+                      const isCorrect = letter===q.correct;
+                      const cnt = letterCounts[letter]||0;
+                      const pct = Math.round(cnt/total*100);
+                      return (
+                        <div key={letter} style={{marginBottom:10,padding:"8px 10px",borderRadius:8,border:`1.5px solid ${isCorrect?"#A7F3D0":"var(--frost)"}`,background:isCorrect?"#F0FDF4":"white"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,alignItems:"center"}}>
+                            <div style={{display:"flex",gap:7,alignItems:"center"}}>
+                              <span style={{width:20,height:20,borderRadius:"50%",background:isCorrect?"#0F9F6E":"var(--frost)",color:isCorrect?"white":"var(--ink3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,flexShrink:0}}>{letter}</span>
+                              <span style={{fontSize:11,color:isCorrect?"var(--ink)":"var(--ink3)",fontWeight:isCorrect?700:500}}>{opt}</span>
+                              {isCorrect&&<span style={{fontSize:9,fontWeight:700,color:"#0F9F6E",background:"#D1FAE5",padding:"2px 6px",borderRadius:10}}>✓ CORRECT</span>}
+                            </div>
+                            <span style={{fontFamily:"DM Mono,monospace",fontSize:11,fontWeight:700,color:isCorrect?"#0F9F6E":"var(--ink2)"}}>{cnt} ({pct}%)</span>
+                          </div>
+                          <div style={{height:5,background:"var(--frost)",borderRadius:3,overflow:"hidden"}}>
+                            <div style={{height:"100%",width:pct+"%",background:isCorrect?"#0F9F6E":"#C7D2EC",borderRadius:3,transition:"width .4s"}}/>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div style={{marginTop:10,padding:"9px 12px",background:"rgba(91,59,245,.05)",borderRadius:8,border:"1px solid rgba(91,59,245,.1)",fontSize:11,color:"var(--ink2)",lineHeight:1.6}}>
+                      💡 {q.explanation}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="card">
+            <div className="card-header"><div className="card-title">MCQ Score Summary</div><div className="card-sub">How many correct out of 3</div></div>
+            <div className="card-body">
+              <div style={{display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
+                <div style={{display:"flex",gap:12,alignItems:"flex-end",height:120,flex:1}}>
+                  {[0,1,2,3].map(score=>{
+                    const cnt = mcqScoreCounts[score]||0;
+                    const total = apps.length||1;
+                    return (
+                      <div key={score} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
+                        <span style={{fontSize:12,fontWeight:800,color:score===3?"#0F9F6E":score===2?"#1A6DFF":score===1?"#E8860A":"#E53E5C"}}>{cnt}</span>
+                        <div style={{width:"100%",background:score===3?"#0F9F6E":score===2?"#1A6DFF":score===1?"#E8860A":"#E53E5C",borderRadius:"6px 6px 0 0",height:Math.max(8,cnt/maxMcq*90)+"px"}}/>
+                        <span style={{fontSize:11,fontWeight:700}}>{score}/3</span>
+                        <span style={{fontSize:9,color:"var(--ink3)"}}>{Math.round(cnt/total*100)}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,minWidth:200}}>
+                  {[
+                    {label:"All Correct (3/3)",val:mcqScoreCounts[3]||0,color:"#0F9F6E",bg:"#D1FAE5"},
+                    {label:"Strong (2/3)",val:mcqScoreCounts[2]||0,color:"#1A6DFF",bg:"#DBEAFE"},
+                    {label:"Partial (1/3)",val:mcqScoreCounts[1]||0,color:"#E8860A",bg:"#FEF3C7"},
+                    {label:"No Answers (0/3)",val:mcqScoreCounts[0]||0,color:"#E53E5C",bg:"#FEE2E2"},
+                  ].map(s=>(
+                    <div key={s.label} style={{padding:"10px 12px",borderRadius:10,background:s.bg,border:`1px solid ${s.color}22`}}>
+                      <div style={{fontFamily:"Fraunces,serif",fontSize:24,color:s.color}}>{s.val}</div>
+                      <div style={{fontSize:10,fontWeight:700,color:s.color,marginTop:2}}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
-      
-      {/* ... Leave Reviewers and Charts tabs the same as before ... */}
+
+      {/* ════════════════════════════════════════ */}
+      {tab==="reviewers" && (
+        <div>
+          <div className="g2 mb6">
+            {reviewers.map((rv,i)=>(
+              <div key={rv.name} className="card">
+                <div className="card-body">
+                  <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:14}}>
+                    <div style={{width:44,height:44,borderRadius:"50%",background:"linear-gradient(135deg,#1e1b4b,#5B3BF5)",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:800,fontSize:14,flexShrink:0}}>
+                      {rv.name.split(" ").map(n=>n[0]).join("").slice(0,2).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:14}}>{rv.name}</div>
+                      <div style={{fontSize:11,color:"var(--ink3)"}}>{rv.total} review{rv.total!==1?"s":""} · avg <b style={{color:"var(--violet)"}}>{rv.avgScore}/100</b></div>
+                    </div>
+                  </div>
+                  {[["✅ Accepted",rv.accepted,"#0F9F6E","#D1FAE5"],["◐ Waitlisted",rv.waitlisted,"#E8860A","#FEF3C7"],["✗ Rejected",rv.rejected,"#E53E5C","#FEE2E2"]].map(([l,v,c,bg])=>(
+                    <div key={l} style={{marginBottom:8}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                        <span style={{fontSize:11,fontWeight:600}}>{l}</span>
+                        <span style={{fontFamily:"DM Mono,monospace",fontSize:11,fontWeight:700,color:c}}>{v} ({rv.total?Math.round(v/rv.total*100):0}%)</span>
+                      </div>
+                      <div style={{height:7,background:"var(--frost)",borderRadius:4,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:(rv.total?v/rv.total*100:0)+"%",background:c,borderRadius:4}}/>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{marginTop:12,padding:"8px 12px",background:"var(--snow)",borderRadius:8,textAlign:"center"}}>
+                    <span style={{fontSize:11,color:"var(--ink3)"}}>Avg Score: </span>
+                    <span style={{fontFamily:"Fraunces,serif",fontSize:22,fontWeight:800,color:rv.avgScore>=75?"#0F9F6E":rv.avgScore>=55?"#E8860A":"#E53E5C"}}>{rv.avgScore}</span>
+                    <span style={{fontSize:11,color:"var(--ink3)"}}>/100</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {reviewers.length===0 && <div className="card"><div className="card-body" style={{textAlign:"center",padding:48,color:"var(--ink3)"}}>No reviewer data yet</div></div>}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════ */}
+      {tab==="applicants" && (
+        <div>
+          <input value={searchApp} onChange={e=>setSearchApp(e.target.value)} placeholder="🔍 Search name, email, university…"
+            style={{width:"100%",padding:"10px 14px",border:"1.5px solid var(--frost)",borderRadius:10,fontSize:13,outline:"none",background:"white",fontFamily:"'DM Sans',sans-serif",marginBottom:16}}/>
+          <div className="card">
+            <div className="card-body" style={{padding:0}}>
+              <table className="tbl">
+                <thead><tr><th>Name</th><th>Country</th><th>Year</th><th>GPA</th><th>Track</th><th>MCQ</th><th>Consensus</th><th>Avg Score</th></tr></thead>
+                <tbody>{filteredApps.map((a,i)=>{
+                  const appRevs = reviews.filter(r=>(r["applicationEmail"]||r["ApplicationEmail"]||"").toLowerCase()===(a["Email"]||"").toLowerCase());
+                  const scores = appRevs.map(r=>parseFloat(r["score"]||r["Score"]||0)).filter(Boolean);
+                  const avgSc = scores.length?Math.round(scores.reduce((x,y)=>x+y,0)/scores.length):0;
+                  const top = getDecision(a["Email"]);
+                  const mcq = getMCQScore(a);
+                  return (
+                    <tr key={i}>
+                      <td><div style={{fontWeight:700,fontSize:12}}>{a["Name"]||"—"}</div><div style={{fontSize:10,color:"var(--ink3)"}}>{a["Email"]}</div></td>
+                      <td style={{fontSize:12,fontWeight:600}}>{a["Country"]||a["Nationality"]||"—"}</td>
+                      <td style={{fontSize:11}}>{a["Academic Year"]||"—"}</td>
+                      <td className="mono" style={{fontWeight:700}}>{a["GPA"]||"—"}</td>
+                      <td style={{fontSize:10}}>{(a["Target Track"]||"—").split(",")[0]}</td>
+                      <td>
+                        <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                          {[0,1,2].map(qi=>{
+                            const letter = mcq.answers[qi]?.charAt(0)||"";
+                            const isCorrect = letter===MCQ_QUESTIONS[qi].correct;
+                            const hasAnswer = !!letter && letter!=="D";
+                            return <span key={qi} style={{width:16,height:16,borderRadius:3,background:hasAnswer?(isCorrect?"#0F9F6E":"#E53E5C"):"var(--frost)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:800,color:"white",flexShrink:0}} title={`Q${qi+1}: ${letter||"No answer"}`}>{letter||"?"}</span>;
+                          })}
+                          <span style={{fontFamily:"DM Mono,monospace",fontSize:10,fontWeight:800,color:mcq.correct===3?"#0F9F6E":mcq.correct===2?"#1A6DFF":mcq.correct===1?"#E8860A":"#E53E5C"}}>{mcq.correct}/3</span>
+                        </div>
+                      </td>
+                      <td><span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:decBg(top),color:decFg(top)}}>{top}</span></td>
+                      <td style={{fontFamily:"DM Mono,monospace",fontWeight:700,color:avgSc>=75?"#065F46":avgSc>=50?"#92400E":avgSc?"#991B1B":"var(--mist)"}}>{avgSc?avgSc+"/100":"—"}</td>
+                    </tr>
+                  );
+                })}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
