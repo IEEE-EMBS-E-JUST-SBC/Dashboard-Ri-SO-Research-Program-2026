@@ -1633,22 +1633,20 @@ function autoScore(app) {
   else academic += 1;
   academic = Math.min(academic, 15);
 
-  // Programming
-  const { progLevel, hasAdvancedLibs, hasIntermediateLibs } = parseTechLevel(
-    (app["Programming Skill"] || "") + " " + (app["Math/Stats Skill"] || "")
-  );
+  // Programming — from Programming Skill column only
+  const { progLevel, hasAdvancedLibs, hasIntermediateLibs } = parseTechLevel(app["Programming Skill"] || "");
   let programming = 0;
   if (progLevel === "advanced" || progLevel === "expert" || hasAdvancedLibs) programming = 15;
   else if (progLevel === "intermediate" || hasIntermediateLibs) programming = 11;
   else if (progLevel === "beginner") programming = 6;
   else programming = 2;
 
-  // Math
-  const { mathLevel } = parseTechLevel(app["Math/Stats Skill"] || "");
+  // Math — derive from MCQ score since Math/Stats Skill now holds MCQ answers
+  const mcq = getMCQScore(app);
   let math = 0;
-  if (mathLevel === "advanced") math = 10;
-  else if (mathLevel === "intermediate") math = 7;
-  else if (mathLevel === "basic") math = 4;
+  if (mcq.correct === 3) math = 10;
+  else if (mcq.correct === 2) math = 7;
+  else if (mcq.correct === 1) math = 4;
   else math = 1;
 
   return { academic, programming, math, problem_solving: 10, methodology: 10, goals: 5, motivation: 5 };
@@ -1753,6 +1751,9 @@ function ApplicantCard({ app, adminName, adminEmail, existingDecision, allReview
         : `PORTFOLIO: Not included in this evaluation.`;
       const essayFull = trunc(fullEssay, 6500);
 
+      const mcqForAI = getMCQScore(app);
+      const mcqSummary = `Q1: ${mcqForAI.answers[0]||"No answer"} (${mcqForAI.answers[0]===MCQ_QUESTIONS[0].correct?"✓ Correct":"✗ Wrong"}), Q2: ${mcqForAI.answers[1]||"No answer"} (${mcqForAI.answers[1]===MCQ_QUESTIONS[1].correct?"✓ Correct":"✗ Wrong"}), Q3: ${mcqForAI.answers[2]||"No answer"} (${mcqForAI.answers[2]===MCQ_QUESTIONS[2].correct?"✓ Correct":"✗ Wrong"}) — ${mcqForAI.correct}/3 correct`;
+
       const prompt = `You are a senior researcher on the Ri-Sō IEEE EMBS SBC Research Program 2026 selection committee...
 APPLICANT:
 Name: ${app["Name"]} | University: ${app["University"]} | Country: ${app["Country"]||app["Nationality"]||"Not specified"}
@@ -1760,7 +1761,7 @@ Faculty: ${app["Faculty"]} / Dept: ${app["Department"]}
 Year: ${app["Academic Year"]} | GPA: ${app["GPA"]}
 Tracks: ${app["Target Track"]}
 Programming: ${app["Programming Skill"]}
-Math/Stats: ${app["Math/Stats Skill"]}
+MCQ Results (3 technical questions): ${mcqSummary}
 ${portfolioBlock}
 ESSAYS:
 Q1: ${ps?.[1]?.trim()||"Not provided"}
@@ -2547,16 +2548,28 @@ const MCQ_QUESTIONS = [
 ];
 
 function getMCQScore(app) {
-  // Reads Q1Answer, Q2Answer, Q3Answer columns from Applications sheet
-  const answers = [
-    (app["Q1Answer"] || app["Q1 Answer"] || app["MCQ1"] || "").toString().trim().toUpperCase(),
-    (app["Q2Answer"] || app["Q2 Answer"] || app["MCQ2"] || "").toString().trim().toUpperCase(),
-    (app["Q3Answer"] || app["Q3 Answer"] || app["MCQ3"] || "").toString().trim().toUpperCase(),
-  ];
+  // Parses "Q1: B | Q2: C | Q3: B" format from Math/Stats Skill column
+  const raw = (app["Math/Stats Skill"] || "").toString();
+  const answers = ["", "", ""];
+
+  // Try to extract Q1, Q2, Q3 answers from the pipe-delimited format
+  const parts = raw.split("|").map(s => s.trim());
+  parts.forEach(part => {
+    const m = part.match(/Q(\d)\s*:\s*([A-Da-d])/i);
+    if (m) {
+      const idx = parseInt(m[1]) - 1;
+      if (idx >= 0 && idx <= 2) answers[idx] = m[2].toUpperCase();
+    }
+  });
+
+  // Fallback: also check dedicated columns if they exist
+  if (!answers[0]) answers[0] = (app["Q1Answer"] || app["Q1 Answer"] || app["MCQ1"] || "").toString().trim().toUpperCase().charAt(0);
+  if (!answers[1]) answers[1] = (app["Q2Answer"] || app["Q2 Answer"] || app["MCQ2"] || "").toString().trim().toUpperCase().charAt(0);
+  if (!answers[2]) answers[2] = (app["Q3Answer"] || app["Q3 Answer"] || app["MCQ3"] || "").toString().trim().toUpperCase().charAt(0);
+
   let correct = 0;
   answers.forEach((ans, i) => {
-    const letter = ans.charAt(0);
-    if (letter === MCQ_QUESTIONS[i].correct) correct++;
+    if (ans && ans === MCQ_QUESTIONS[i].correct) correct++;
   });
   return { answers, correct, total: 3 };
 }
