@@ -3225,86 +3225,131 @@ function AppShell() {
   const userFirstName = userName.split(" ")[0];
   const userInitials = userName.split(" ").map(n=>n[0]).join("").slice(0,2).toUpperCase() || "U";
 
-  const navConfig = {
-    [ROLES.PARTICIPANT]: [
-      { id:"dashboard", icon:"🏠", label:"Dashboard" },
-      { id:"progress",  icon:"📊", label:"My Progress" },
-      { id:"training",  icon:"📚", label:"Training Modules", badge:"3" },
-      { id:"research",  icon:"🔬", label:"Research Hub" },
-      { id:"novelty",   icon:"💡", label:"Novelty Tool" },
-      { id:"competitions",icon:"🏆",label:"Competitions" },
-      { id:"resources", icon:"⚙️", label:"Request Resources" },
-      { id:"calendar",  icon:"📅", label:"Enrichment Calendar" },
-      { id:"profile",   icon:"👤", label:"My Profile" },
-    ],
-    [ROLES.MENTOR]: [
-      { id:"dashboard", icon:"🏠", label:"Dashboard" },
-      { id:"mentees",   icon:"👥", label:"My Mentees" },
-      { id:"meetings",  icon:"📅", label:"Meeting Scheduler" },
-      { id:"review",    icon:"📝", label:"Paper Review", badge:"2" },
-      { id:"progress",  icon:"📊", label:"Progress Tracking" },
-      { id:"profile",   icon:"👤", label:"My Profile" },
-    ],
-    [ROLES.SUPERADMIN]: [
-      { id:"dashboard",    icon:"🏠", label:"Dashboard" },
-      { id:"users",        icon:"👥", label:"User Management" },
-      { id:"filtration",   icon:"🔍", label:"Filtration Center" },
-      { id:"assignment",   icon:"⚡", label:"Track Assignment" },
-      { id:"resources_mgmt",icon:"📦",label:"Resource Management", badge:"5", badgeWarn:true },
-      { id:"metrics",      icon:"📈", label:"Metrics Dashboard" },
-      { id:"sheets",       icon:"📊", label:"Sheets Config" },
-      { id:"profile",      icon:"👤", label:"My Profile" },
-    ],
-    [ROLES.PROADMIN]: [
-      { id:"dashboard",    icon:"🏠", label:"Dashboard" },
-      { id:"analytics",    icon:"📊", label:"Review Analytics" },
-      { id:"filtration",   icon:"🔍", label:"Filtration Center" },
-      { id:"profile",      icon:"👤", label:"My Profile" },
-    ],
+  // ── ROLE CONFIG ────────────────────────────────────────────────────────────
+  // To add a new role in the future:
+  //   1. Add the role string to the ROLES constant at the top of the file.
+  //   2. Add a new entry here in ROLE_CONFIG with its nav items and page map.
+  //   That's it — routing, sidebar, and titles are all derived automatically.
+  // ──────────────────────────────────────────────────────────────────────────
+  const ROLE_CONFIG = {
+    [ROLES.PARTICIPANT]: {
+      nav: [
+        { id:"dashboard",    icon:"🏠", label:"Dashboard" },
+        { id:"progress",     icon:"📊", label:"My Progress" },
+        { id:"training",     icon:"📚", label:"Training Modules", badge:"3" },
+        { id:"research",     icon:"🔬", label:"Research Hub" },
+        { id:"novelty",      icon:"💡", label:"Novelty Tool" },
+        { id:"competitions", icon:"🏆", label:"Competitions" },
+        { id:"resources",    icon:"⚙️", label:"Request Resources" },
+        { id:"calendar",     icon:"📅", label:"Enrichment Calendar" },
+        { id:"profile",      icon:"👤", label:"My Profile" },
+      ],
+      pages: {
+        dashboard:    <ParticipantDashboard user={user}/>,
+        progress:     <ParticipantProgress user={user}/>,
+        training:     <TrainingModules user={user}/>,
+        research:     <ResearchHub user={user}/>,
+        novelty:      <NoveltyTool user={user}/>,
+        competitions: <CompetitionsView user={user}/>,
+        resources:    <ResourceRequests user={user}/>,
+        calendar:     <EnrichmentCalendar user={user}/>,
+      },
+      defaultPage: "dashboard",
+    },
+    [ROLES.MENTOR]: {
+      nav: [
+        { id:"dashboard", icon:"🏠", label:"Dashboard" },
+        { id:"mentees",   icon:"👥", label:"My Mentees" },
+        { id:"meetings",  icon:"📅", label:"Meeting Scheduler" },
+        { id:"review",    icon:"📝", label:"Paper Review", badge:"2" },
+        { id:"progress",  icon:"📊", label:"Progress Tracking" },
+        { id:"profile",   icon:"👤", label:"My Profile" },
+      ],
+      pages: {
+        dashboard: <MentorDashboard user={user}/>,
+        mentees:   <MentorMentees user={user}/>,
+        meetings:  <MentorMeetings user={user}/>,
+        review:    <PaperReview user={user}/>,
+        progress:  <MenteeProgress user={user}/>,
+      },
+      defaultPage: "dashboard",
+    },
+    [ROLES.SUPERADMIN]: {
+      nav: [
+        { id:"dashboard",      icon:"🏠", label:"Dashboard" },
+        { id:"users",          icon:"👥", label:"User Management" },
+        { id:"filtration",     icon:"🔍", label:"Filtration Center" },
+        { id:"assignment",     icon:"⚡", label:"Track Assignment" },
+        { id:"resources_mgmt", icon:"📦", label:"Resource Management", badge:"5", badgeWarn:true },
+        { id:"metrics",        icon:"📈", label:"Metrics Dashboard" },
+        { id:"sheets",         icon:"📊", label:"Sheets Config" },
+        { id:"profile",        icon:"👤", label:"My Profile" },
+      ],
+      pages: {
+        dashboard:      <AdminDashboard user={user}/>,
+        users:          <AdminUsers/>,
+        filtration:     <AdminFiltration/>,
+        assignment:     <AdminTrackAssignment/>,
+        resources_mgmt: <AdminResourceMgmt/>,
+        metrics:        <AdminMetrics/>,
+        sheets:         <AdminSheetsConfig/>,
+      },
+      defaultPage: "dashboard",
+    },
+    [ROLES.PROADMIN]: {
+      nav: [
+        { id:"dashboard",  icon:"🏠", label:"Dashboard" },
+        { id:"analytics",  icon:"📊", label:"Review Analytics" },
+        { id:"filtration", icon:"🔍", label:"Filtration Center" },
+        { id:"profile",    icon:"👤", label:"My Profile" },
+      ],
+      pages: {
+        dashboard:  <ProAdminDashboard/>,
+        analytics:  <ProAdminDashboard/>,
+        filtration: <AdminFiltration/>,
+      },
+      defaultPage: "dashboard",
+    },
+    // ── ADD NEW ROLES HERE ──
   };
 
-  const titles = {
-    dashboard:"Dashboard",progress:"Progress",training:"Training Modules",research:"Research Hub",
-    novelty:"Novelty Assessment",competitions:"Competitions",resources:"Request Resources",calendar:"Enrichment Calendar",
-    mentees:"My Mentees",meetings:"Meeting Scheduler",review:"Paper Review",
-    users:"User Management",filtration:"Filtration Center",assignment:"Track Assignment Engine",
-    resources_mgmt:"Resource Management",metrics:"Metrics Dashboard",sheets:"Sheets Config",
-    analytics:"Review Analytics",
-    profile:"My Profile",
-  };
+  // Strict exact-match lookup — never falls back to another role
+  const roleConfig = ROLE_CONFIG[userRole] ?? null;
+
+  // Derive sidebar items and page titles entirely from roleConfig
+  const items = roleConfig
+    ? [...roleConfig.nav, { id:"profile", icon:"👤", label:"My Profile" }]
+        // deduplicate in case profile is already listed in the role's nav
+        .filter((item, idx, arr) => arr.findIndex(x => x.id === item.id) === idx)
+    : [];
+
+  const titles = Object.fromEntries(
+    items.map(item => [item.id, item.label])
+  );
 
   const renderContent = () => {
-    if (nav==="profile") return <ProfileView user={user}/>;
-    if (userRole===ROLES.PARTICIPANT) {
-      const map = { dashboard:<ParticipantDashboard user={user}/>, progress:<ParticipantProgress user={user}/>, training:<TrainingModules user={user}/>, research:<ResearchHub user={user}/>, novelty:<NoveltyTool user={user}/>, competitions:<CompetitionsView user={user}/>, resources:<ResourceRequests user={user}/>, calendar:<EnrichmentCalendar user={user}/> };
-      return map[nav]||<ParticipantDashboard user={user}/>;
-    }
-    if (userRole===ROLES.MENTOR) {
-      const map = { dashboard:<MentorDashboard user={user}/>, mentees:<MentorMentees user={user}/>, meetings:<MentorMeetings user={user}/>, review:<PaperReview user={user}/>, progress:<MenteeProgress user={user}/> };
-      return map[nav]||<MentorDashboard user={user}/>;
-    }
-    if (userRole===ROLES.SUPERADMIN) {
-      const map = { dashboard:<AdminDashboard user={user}/>, users:<AdminUsers/>, filtration:<AdminFiltration/>, assignment:<AdminTrackAssignment/>, resources_mgmt:<AdminResourceMgmt/>, metrics:<AdminMetrics/>, sheets:<AdminSheetsConfig/> };
-      return map[nav]||<AdminDashboard user={user}/>;
-    }
-    if (userRole===ROLES.PROADMIN) {
-      const map = { dashboard:<ProAdminDashboard/>, analytics:<ProAdminDashboard/>, filtration:<AdminFiltration/> };
-      return map[nav]||<ProAdminDashboard/>;
-    }
-    // Fallback
-    return (
-      <div style={{padding:24}}>
-        <div style={{background:"#FEF3C7",border:"1px solid #FDE68A",borderRadius:12,padding:20,fontSize:13,color:"#92400E"}}>
-          <b>⚠ Unknown role: "{userRole}"</b><br/>
-          Your Users sheet must have a <code>role</code> column with value: <code>superadmin</code>, <code>mentor</code>, <code>participant</code>, or <code>proadmin</code> (lowercase).<br/><br/>
-          <b>Your user data from Sheets:</b><br/>
-          <pre style={{marginTop:8,fontSize:11,background:"white",padding:10,borderRadius:8,overflow:"auto"}}>{JSON.stringify(user, null, 2)}</pre>
-        </div>
-      </div>
-    );
-  };
+    // Profile is always available to every role
+    if (nav === "profile") return <ProfileView user={user}/>;
 
-  const items = navConfig[userRole] || navConfig[ROLES.SUPERADMIN] || [];
+    // Unknown / misconfigured role — show a clear diagnostic, never guess
+    if (!roleConfig) {
+      return (
+        <div style={{padding:24}}>
+          <div style={{background:"#FEF3C7",border:"1px solid #FDE68A",borderRadius:12,padding:20,fontSize:13,color:"#92400E"}}>
+            <b>⚠ Unknown role: "{userRole}"</b><br/>
+            The <code>role</code> column in your Users sheet must be one of:{" "}
+            {Object.keys(ROLE_CONFIG).map(r => <code key={r} style={{margin:"0 4px"}}>{r}</code>)}
+            (all lowercase, no spaces).<br/><br/>
+            <b>Your full user record from Sheets:</b>
+            <pre style={{marginTop:8,fontSize:11,background:"white",padding:10,borderRadius:8,overflow:"auto",whiteSpace:"pre-wrap"}}>{JSON.stringify(user, null, 2)}</pre>
+          </div>
+        </div>
+      );
+    }
+
+    // Render the page for this role, or its default if the nav id isn't found
+    return roleConfig.pages[nav] ?? roleConfig.pages[roleConfig.defaultPage];
+  };
 
   return (
     <div className="app">
