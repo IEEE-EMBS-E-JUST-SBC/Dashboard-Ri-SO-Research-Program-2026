@@ -1730,28 +1730,29 @@ function ApplicantCard({ app, adminName, adminEmail, existingDecision, allReview
 
   const TRACK_OPTIONS = ["Medical Imaging", "Signal Processing", "Biosensors", "Neuro", "Bioinformatics"];
 
-const fullEssay = app["Research Motivation"] || "";
+  const fullEssay = app["Research Motivation"] || "";
 
-  // Problem (Problem OR Problem Solving) → until Methodology
+  // Problem → until Methodology
   const ps = fullEssay.match(
-    /(Problem(?:\s*Solving)?)\s*[:\-\s]*([\s\S]*?)(?=Methodology\s*[:\-\s]*)/i
+    /Problem(?:\s*Solving)?\s*:\s*([\s\S]*?)(?=\n\s*Methodology\s*:)/i
   );
 
   // Methodology → until Goal
   const meth = fullEssay.match(
-    /Methodology\s*[:\-\s]*([\s\S]*?)(?=Goal\s*[:\-\s]*)/i
+    /Methodology\s*:\s*([\s\S]*?)(?=\n\s*Goal\s*:)/i
   );
 
   // Goal → until end
   const goal = fullEssay.match(
-    /Goal\s*[:\-\s]*([\s\S]*)/i
+    /Goal\s*:\s*([\s\S]*)/i
   );
 
   const essaySections = [
-    ps   && { label: "🧩 Q1 — Problem Solving", text: ps[2].trim() },
+    ps   && { label: "🧩 Q1 — Problem Solving", text: ps[1].trim() },
     meth && { label: "🔬 Q2 — Methodology", text: meth[1].trim() },
     goal && { label: "🚀 Q3 — Goals", text: goal[1].trim() },
   ].filter(Boolean);
+
   if (!essaySections.length && fullEssay) essaySections.push({ label:"📝 Essays", text: fullEssay });
 
   const cvUrl = app["CV Link"] || "";
