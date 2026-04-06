@@ -1673,28 +1673,93 @@ function autoScore(app) {
 // Get your FREE key at: https://console.groq.com/keys (no credit card needed)
 const GROQ_KEY = import.meta.env.VITE_GROQ_KEY; // ← Get free key at console.groq.com/keys, paste here
 
-async function callGroq(prompt) {
+async function callGroq(prompt, retries = 3) {
   if (!GROQ_KEY) return null;
-  const res = await fetch(
-    "https://api.groq.com/openai/v1/chat/completions",
-    {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${GROQ_KEY}`
-      },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.3,
-        max_tokens: 1400
-      })
+  
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const res = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${GROQ_KEY}`
+          },
+          body: JSON.stringify({
+            model: "llama-3.1-8b-instant",
+            messages: [
+              {
+                role: "system",
+                content: "You are a JSON-only responder. You MUST return only a single valid JSON object. No markdown, no backticks, no explanation, no text before or after the JSON. Start your response with { and end with }."
+              },
+              { role: "user", content: prompt }
+            ],
+            temperature: 0.3,  // lower = more deterministic JSON
+            max_tokens: 1400,
+            response_format: { type: "json_object" }  // forces JSON mode
+          })
+        }
+      );
+      
+      if (res.status === 429) {
+        const retryAfter = parseInt(res.headers.get("retry-after") || "0") || (2 ** attempt * 2);
+        await new Promise(r => setTimeout(r, retryAfter * 1000));
+        continue;
+      }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData?.error?.message || `HTTP ${res.status}`);
+      }
+      
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      
+      return data.choices?.[0]?.message?.content || "";
+      
+    } catch(e) {
+      if (attempt === retries - 1) throw e;
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
     }
-  );
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  const text = data.choices?.[0]?.message?.content || "";
-  return text.replace(/```json[\s\S]*?```|```/g, (m) => m.startsWith("```json") ? m.slice(7,-3).trim() : "").trim() || text.trim();
+  }
+  
+  throw new Error("Failed after retries.");
+}
+
+// Robust JSON extractor — handles partial/wrapped JSON
+function extractJSON(text) {
+  if (!text) throw new Error("Empty response from AI");
+  
+  // 1. Try direct parse first
+  try { return JSON.parse(text); } catch {}
+  
+  // 2. Strip markdown fences
+  const stripped = text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  try { return JSON.parse(stripped); } catch {}
+  
+  // 3. Extract first { ... } block
+  const firstBrace = stripped.indexOf("{");
+  const lastBrace = stripped.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    try { return JSON.parse(stripped.slice(firstBrace, lastBrace + 1)); } catch {}
+  }
+  
+  // 4. Try to fix truncated JSON by closing open brackets
+  let partial = stripped.slice(firstBrace !== -1 ? firstBrace : 0);
+  let opens = (partial.match(/{/g) || []).length - (partial.match(/}/g) || []).length;
+  let openArr = (partial.match(/\[/g) || []).length - (partial.match(/\]/g) || []).length;
+  // close any dangling string
+  if ((partial.match(/"/g) || []).length % 2 !== 0) partial += '"';
+  while (openArr > 0) { partial += "]"; openArr--; }
+  while (opens > 0) { partial += "}"; opens--; }
+  try { return JSON.parse(partial); } catch {}
+  
+  throw new Error(`Could not parse AI response as JSON. Raw: ${text.slice(0, 200)}`);
 }
 
 function ApplicantCard({ app, adminName, adminEmail, existingDecision, allReviews, onDecision }) {
