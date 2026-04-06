@@ -1730,18 +1730,21 @@ function ApplicantCard({ app, adminName, adminEmail, existingDecision, allReview
 
   const TRACK_OPTIONS = ["Medical Imaging", "Signal Processing", "Biosensors", "Neuro", "Bioinformatics"];
 
-  const fullEssay = app["Research Motivation"] || "";
+const fullEssay = app["Research Motivation"] || "";
 
+  // Problem (Problem OR Problem Solving) → until Methodology
   const ps = fullEssay.match(
-    /(Problem\s*Solving|Problem)\s*[:\-\s]*([\s\S]*?)(?=Methodology\s*[:\-\s]*|Goal\s*[:\-\s]*|Problem\s*Solving\s*[:\-\s]*|Problem\s*[:\-\s]*|$)/i
+    /(Problem(?:\s*Solving)?)\s*[:\-\s]*([\s\S]*?)(?=Methodology\s*[:\-\s]*)/i
   );
 
+  // Methodology → until Goal
   const meth = fullEssay.match(
-    /Methodology\s*[:\-\s]*([\s\S]*?)(?=Goal\s*[:\-\s]*|Problem\s*Solving\s*[:\-\s]*|Problem\s*[:\-\s]*|$)/i
+    /Methodology\s*[:\-\s]*([\s\S]*?)(?=Goal\s*[:\-\s]*)/i
   );
 
+  // Goal → until end
   const goal = fullEssay.match(
-    /Goal\s*[:\-\s]*([\s\S]*?)(?=Methodology\s*[:\-\s]*|Problem\s*Solving\s*[:\-\s]*|Problem\s*[:\-\s]*|$)/i
+    /Goal\s*[:\-\s]*([\s\S]*)/i
   );
 
   const essaySections = [
