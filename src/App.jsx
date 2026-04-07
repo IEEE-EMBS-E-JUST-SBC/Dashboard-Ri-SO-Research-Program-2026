@@ -1783,8 +1783,10 @@ function ApplicantCard({ app, adminName, adminEmail, existingDecision, allReview
   const [usePortfolioInAI, setUsePortfolioInAI] = useState(true);
   const [saving, setSaving]       = useState(false);
   const [saved, setSaved]         = useState(!!existingDecision?.decision);
+  const isEditMode = !!existingDecision?.reviewId;
   const [saveError, setSaveError] = useState("");
   const [showAllReviews, setShowAllReviews] = useState(false);
+
 
   const total = CRITERIA.reduce((sum, c) => sum + Math.min(scores[c.id]||0, c.weight), 0);
   const setScore = (id, val) => {
@@ -2074,10 +2076,19 @@ Return ONLY valid JSON: {"scores": {"academic": <0-15>, "programming": <0-15>, "
         {/* ── RIGHT: Scorecard + Decision ── */}
         <div style={{padding:"16px 16px",background:"var(--snow)",display:"flex",flexDirection:"column",overflowY:"auto"}}>
 
+          {isEditMode && (
+            <div style={{marginBottom:8,padding:"8px 12px",background:"linear-gradient(135deg,#FEF3C7,#FDE68A)",border:"1px solid #F59E0B",borderRadius:8,display:"flex",alignItems:"center",gap:8,fontSize:11}}>
+              <span style={{fontSize:16}}>✏️</span>
+              <div>
+                <div style={{fontWeight:800,color:"#92400E"}}>Editing Previous Review</div>
+                <div style={{color:"#78350F",fontSize:10}}>Originally saved {existingDecision?.reviewedAt ? new Date(existingDecision.reviewedAt).toLocaleDateString() : "earlier"} · Score was {existingDecision?.score}/100</div>
+              </div>
+            </div>
+          )}
           <div style={{marginBottom:10,padding:"6px 10px",background:"rgba(91,59,245,.07)",borderRadius:7,fontSize:11,color:"var(--violet)",fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
             👤 {adminName}
-            {saved && <span style={{marginLeft:"auto",color:"var(--jade)",fontSize:10,fontWeight:700}}>✓ Saved</span>}
-            {!saved && decision && <span style={{marginLeft:"auto",color:"var(--amber)",fontSize:10}}>● Unsaved</span>}
+            {saved && <span style={{marginLeft:"auto",color:"var(--jade)",fontSize:10,fontWeight:700}}>✓ {isEditMode ? "Updated" : "Saved"}</span>}
+            {!saved && decision && <span style={{marginLeft:"auto",color:"var(--amber)",fontSize:10}}>● Unsaved changes</span>}
           </div>
 
           <div style={{fontSize:9,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:.8,marginBottom:10}}>Scorecard</div>
@@ -2129,7 +2140,9 @@ Return ONLY valid JSON: {"scores": {"academic": <0-15>, "programming": <0-15>, "
             ))}
           </div>
 
-          {saving && <div style={{textAlign:"center",fontSize:11,color:"var(--ink3)",padding:6}}>💾 Saving to Reviews…</div>}
+          {saving && <div style={{textAlign:"center",fontSize:11,color:"var(--ink3)",padding:6}}>
+            {isEditMode ? "🔄 Updating review…" : "💾 Saving to Reviews…"}
+          </div>}
         </div>
       </div>
     </div>
@@ -2225,7 +2238,29 @@ function AdminFiltration() {
           </div>
         ))}
       </div>
-
+      {Object.keys(decisions).length > 0 && (
+        <div style={{marginBottom:20,padding:"14px 18px",background:"rgba(91,59,245,.05)",border:"1px solid rgba(91,59,245,.12)",borderRadius:12}}>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--violet)",letterSpacing:.8,marginBottom:10}}>
+            ✏️ YOUR PAST REVIEWS — Click to Edit
+            <span style={{marginLeft:8,background:"var(--violet)",color:"white",fontSize:9,padding:"2px 8px",borderRadius:10}}>{Object.keys(decisions).length}</span>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {Object.entries(decisions).map(([email, dec]) => {
+              const app = applicants.find(a => a["Email"]?.toLowerCase() === email.toLowerCase());
+              if (!app) return null;
+              const bg = dec.decision==="Accepted"?"#D1FAE5":dec.decision==="Waitlisted"?"#FEF3C7":"#FEE2E2";
+              const fg = dec.decision==="Accepted"?"#065F46":dec.decision==="Waitlisted"?"#92400E":"#991B1B";
+              return (
+                <button key={email} onClick={() => setCurrent(email)}
+                  style={{padding:"8px 14px",borderRadius:9,border:`1.5px solid ${fg}44`,background:bg,cursor:"pointer",textAlign:"left"}}>
+                  <div style={{fontSize:12,fontWeight:700,color:fg}}>{app["Name"]}</div>
+                  <div style={{fontSize:10,color:fg,opacity:.8}}>{dec.decision} · {dec.score}/100</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search name, email, university…"
           style={{flex:1,minWidth:200,padding:"10px 14px",border:"1.5px solid var(--frost)",borderRadius:10,fontSize:13,outline:"none",background:"white",fontFamily:"'DM Sans',sans-serif"}}/>
