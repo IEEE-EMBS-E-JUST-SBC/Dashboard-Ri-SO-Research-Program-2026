@@ -2238,7 +2238,8 @@ function AdminFiltration() {
           </div>
         ))}
       </div>
-      {Object.keys(decisions).length > 0 && (
+{/*       
+      { {Object.keys(decisions).length > 0 && (
         <div style={{marginBottom:20,padding:"14px 18px",background:"rgba(91,59,245,.05)",border:"1px solid rgba(91,59,245,.12)",borderRadius:12}}>
           <div style={{fontSize:11,fontWeight:700,color:"var(--violet)",letterSpacing:.8,marginBottom:10}}>
             ✏️ YOUR PAST REVIEWS — Click to Edit
@@ -2260,7 +2261,8 @@ function AdminFiltration() {
             })}
           </div>
         </div>
-      )}
+      )} }
+       */}
       <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search name, email, university…"
           style={{flex:1,minWidth:200,padding:"10px 14px",border:"1.5px solid var(--frost)",borderRadius:10,fontSize:13,outline:"none",background:"white",fontFamily:"'DM Sans',sans-serif"}}/>
