@@ -464,7 +464,7 @@ function DataProvider({ children }) {
   const updateUser = (id, patch) => {
     const updated = users.map(u => u.id === id ? { ...u, ...patch } : u);
     save(updated);
-    sheetsAPI.update("Users", id, patch);
+    sheetsAPI.update("Users", patch.email || id, patch);
     showToast("✓ Profile updated");
   };
 
