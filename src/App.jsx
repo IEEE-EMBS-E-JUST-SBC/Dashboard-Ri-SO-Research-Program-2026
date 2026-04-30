@@ -733,7 +733,7 @@ function AuthPage({ onBack }) {
 
         <label className="auth-label">Email</label>
         <input
-          className="auth-input" type="email" placeholder="you@ejust.edu.eg"
+          className="auth-input" type="email" placeholder="your@email.com"
           value={form.email} onChange={e => set("email", e.target.value)}
           onKeyDown={e => e.key==="Enter" && handleSubmit()}
         />
@@ -755,7 +755,7 @@ function AuthPage({ onBack }) {
         </div>
 
         <div style={{marginTop:20,textAlign:"center",fontSize:11,color:"var(--ink3)"}}>
-          Use your registered E-JUST email and password.<br/>
+          Use your registered email and username.<br/>
           Contact your program admin if you need access.
         </div>
       </div>
@@ -799,6 +799,29 @@ const PBar = ({ val, max=100, color="" }) => (
 //  PARTICIPANT VIEWS
 // ─────────────────────────────────────────────
 function ParticipantDashboard({ user }) {
+  return (
+    <div>
+      <div className="banner">
+        <div>
+          <div className="banner-chip">IEEE E-JUST EMBS SBC · Ri-Sō 理創 2026</div>
+          <div className="banner-title">Welcome, {(user.name||"").split(" ")[0] || "Participant"} 👋</div>
+          <div className="banner-sub">Your dashboard will be set up soon by your admin.</div>
+        </div>
+      </div>
+      <div className="card" style={{marginTop:24}}>
+        <div className="card-body" style={{textAlign:"center",padding:"56px 24px"}}>
+          <div style={{fontSize:48,marginBottom:16}}>🚧</div>
+          <div style={{fontSize:17,fontWeight:700,color:"var(--ink)",marginBottom:8}}>Dashboard coming soon</div>
+          <div style={{fontSize:13,color:"var(--ink3)",maxWidth:360,margin:"0 auto",lineHeight:1.7}}>
+            Your dashboard content hasn't been set up yet. Check back later or contact your program admin.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function _OldParticipantDashboard_UNUSED({ user }) {
   const { pushToSheets } = useContext(DataCtx);
   const p = user;
   return (
@@ -1178,30 +1201,15 @@ function CompetitionsView({ user }) {
 }
 
 function ResourceRequests({ user }) {
-  const { pushToSheets } = useContext(DataCtx);
-  const resources = [
-    {id:"R1",name:"HPC / GPU Cluster Access",  desc:"NVIDIA A100 compute nodes",         icon:"🖥️", type:"Compute"},
-    {id:"R2",name:"Lab Access (Wet Lab)",        desc:"Biomedical wet lab for hardware",    icon:"🔬", type:"Lab"},
-    {id:"R3",name:"Arduino Mega 2560",           desc:"Microcontroller for prototypes",     icon:"⚡", type:"Hardware"},
-    {id:"R4",name:"Raspberry Pi 4 (8GB)",        desc:"Edge computing for wearables",       icon:"🍓", type:"Hardware"},
-    {id:"R5",name:"ECG/EEG Sensor Module",       desc:"AD8232 ECG + ADS1299 EEG board",    icon:"📡", type:"Sensor"},
-    {id:"R6",name:"Overleaf Premium",            desc:"Full collaboration for IEEE writing",icon:"🌿", type:"Software"},
-  ];
   return (
     <div className="card">
-      <div className="card-header"><div className="card-title">Request Research Resources</div><div className="card-sub">All requests tracked in Google Sheets</div></div>
-      <div className="card-body" style={{padding:0}}>
-        {resources.map(r=>(
-          <div key={r.id} style={{display:"flex",alignItems:"center",padding:"14px 20px",borderBottom:"1px solid var(--frost)"}}>
-            <span style={{fontSize:24,marginRight:14}}>{r.icon}</span>
-            <div style={{flex:1}}>
-              <div style={{fontSize:13,fontWeight:600}}>{r.name}</div>
-              <div className="txt-muted">{r.desc}</div>
-            </div>
-            <span className="tag" style={{marginRight:10}}>{r.type}</span>
-            <button className="btn btn-p btn-sm" onClick={()=>pushToSheets("ResourceRequests",{participantId:user.id,resource:r.name,type:r.type,requestedAt:new Date().toISOString(),status:"Pending"})}>Request</button>
-          </div>
-        ))}
+      <div className="card-header"><div className="card-title">Request Research Resources</div><div className="card-sub">Resources will be available once your program begins</div></div>
+      <div className="card-body" style={{textAlign:"center",padding:"56px 24px"}}>
+        <div style={{fontSize:48,marginBottom:16}}>📦</div>
+        <div style={{fontSize:17,fontWeight:700,color:"var(--ink)",marginBottom:8}}>No resources available yet</div>
+        <div style={{fontSize:13,color:"var(--ink3)",maxWidth:360,margin:"0 auto",lineHeight:1.7}}>
+          Resource requests will open once your program admin has set up this section.
+        </div>
       </div>
     </div>
   );
@@ -3294,6 +3302,9 @@ function ProfileView({ user }) {
   const [form, setForm] = useState({...user});
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const save = () => { updateUser(user.id, form); pushToSheets("ProfileUpdates",{id:user.id,updatedAt:new Date().toISOString()}); };
+
+  const isParticipant = user.role === ROLES.PARTICIPANT;
+
   return (
     <div className="g2">
       <div className="card">
@@ -3308,27 +3319,31 @@ function ProfileView({ user }) {
             </div>
           </div>
           <div className="fg"><label className="flabel">Full Name</label><input className="finput" value={form.name||""} onChange={e=>set("name",e.target.value)}/></div>
-          <div className="fg"><label className="flabel">Email</label><input className="finput" value={form.email||""} onChange={e=>set("email",e.target.value)}/></div>
-          <div className="fg"><label className="flabel">New Password (leave blank to keep current)</label><input className="finput" type="password" placeholder="New password..." onChange={e=>e.target.value&&set("password",e.target.value)}/></div>
-          {user.role===ROLES.PARTICIPANT&&(
-            <div className="fg"><label className="flabel">Nationality</label><input className="finput" value={form.nationality||""} onChange={e=>set("nationality",e.target.value)}/></div>
+          {!isParticipant && (
+            <div className="fg"><label className="flabel">Email</label><input className="finput" value={form.email||""} onChange={e=>set("email",e.target.value)}/></div>
           )}
+          {isParticipant && (
+            <div className="fg"><label className="flabel">Email</label><input className="finput" value={form.email||""} disabled style={{opacity:0.6,cursor:"not-allowed"}}/></div>
+          )}
+          <div className="fg"><label className="flabel">New Password (leave blank to keep current)</label><input className="finput" type="password" placeholder="New password..." onChange={e=>e.target.value&&set("password",e.target.value)}/></div>
           <button className="btn btn-p" onClick={save}>Save Changes → Google Sheets</button>
         </div>
       </div>
       <div className="card">
         <div className="card-header"><div className="card-title">Account Info</div></div>
         <div className="card-body">
-          {user.role===ROLES.PARTICIPANT&&[
-            ["User ID",user.id],["Phase",`P${user.phase}: ${PHASES[user.phase-1]?.name}`],["Track",user.trackLabel||"Unassigned"],
-            ["Status",user.status],["GPA",user.gpa?.toFixed(1)],["Portfolio",`${user.portfolioScore}/100`],
-            ["Interview",`${user.interviewScore}/100`],["Nationality",user.nationality],
-            ["Novelty Verified",user.noveltyVerified?"Yes ✅":"No ⏳"],["Competition",user.competitionEnrolled||"None"],
+          {isParticipant&&[
+            ["User ID",user.id],["Role","Participant"],
           ].map(([k,v])=>(
             <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid var(--frost)",fontSize:13}}>
               <span className="txt-muted">{k}</span><span style={{fontWeight:600}}>{v}</span>
             </div>
           ))}
+          {isParticipant&&(
+            <div style={{marginTop:16,padding:"14px",background:"var(--snow)",borderRadius:10,fontSize:13,color:"var(--ink3)",lineHeight:1.7}}>
+              Your program details will appear here once your admin has set up your profile.
+            </div>
+          )}
           {user.role===ROLES.MENTOR&&[
             ["User ID",user.id],["Specialty",user.specialty],["Track",user.track],["Mentees",user.mentees?.join(", ")||"None"],["Meetings",user.meetings],["Papers Reviewed",user.papersReviewed],
           ].map(([k,v])=>(
@@ -3369,7 +3384,7 @@ function AppShell() {
       nav: [
         { id:"dashboard",    icon:"🏠", label:"Dashboard" },
         { id:"progress",     icon:"📊", label:"My Progress" },
-        { id:"training",     icon:"📚", label:"Training Modules", badge:"3" },
+        { id:"training",     icon:"📚", label:"Training Modules" },
         { id:"research",     icon:"🔬", label:"Research Hub" },
         { id:"novelty",      icon:"💡", label:"Novelty Tool" },
         { id:"competitions", icon:"🏆", label:"Competitions" },
