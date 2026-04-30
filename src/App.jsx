@@ -1284,19 +1284,19 @@ function EnrichmentCalendar({ user }) {
       <div className="card">
         <div className="card-header"><div className="card-title">April / May 2026 — Enrichment Calendar</div></div>
         <div className="card-body">
-          <div className="event-box" style={{border:"2px solid rgba(91,59,245,.25)",background:"linear-gradient(135deg,rgba(91,59,245,.04),rgba(26,109,255,.03))",borderRadius:12,padding:"20px 18px"}}>
-            <div className="edate" style={{minWidth:52}}>
-              <div className="emon" style={{background:"var(--r1)",color:"white",borderRadius:"6px 6px 0 0",padding:"3px 6px",fontSize:10,fontWeight:800,letterSpacing:.5,textAlign:"center"}}>MAY</div>
-              <div className="eday" style={{fontSize:28,fontWeight:800,color:"var(--violet)",textAlign:"center",lineHeight:1.1,padding:"4px 0"}}>8</div>
+          <div className="event-box" style={{border:"1.5px solid rgba(91,59,245,.18)",background:"linear-gradient(135deg,rgba(91,59,245,.03),rgba(26,109,255,.02))",borderRadius:12,padding:"20px 18px"}}>
+            <div style={{minWidth:52,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
+              <div style={{background:"var(--frost)",color:"var(--ink3)",borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:800,letterSpacing:.5,textAlign:"center",whiteSpace:"nowrap"}}>NEXT WEEK</div>
+              <div style={{fontSize:22,marginTop:4}}>🗓</div>
             </div>
             <div style={{flex:1}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                 <span style={{fontSize:15,fontWeight:700,color:"var(--ink)"}}>Orientation Session</span>
-                <span className="badge b-qual" style={{fontSize:10}}>Confirmed</span>
+                <span className="badge b-review" style={{fontSize:10}}>Date TBC</span>
               </div>
-              <div className="txt-muted" style={{marginBottom:6}}>Session · 9:00 PM · IEEE E-JUST EMBS SBC — Ri-Sō 理創 2026</div>
-              <div style={{fontSize:12,color:"var(--violet)",fontWeight:600,marginBottom:10}}>
-                🗓 Thursday, 8 May 2026 · 9:00 PM
+              <div className="txt-muted" style={{marginBottom:6}}>Session · IEEE E-JUST EMBS SBC — Ri-Sō 理創 2026</div>
+              <div style={{fontSize:12,color:"var(--amber)",fontWeight:600,marginBottom:10}}>
+                ⏳ Exact date & time will be confirmed soon
               </div>
               <div style={{fontSize:12,color:"var(--ink3)",background:"var(--snow)",borderRadius:8,padding:"8px 12px",lineHeight:1.6}}>
                 Competition enrollment details, training schedules, and program timelines will be announced at this session.
