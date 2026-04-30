@@ -3364,10 +3364,10 @@ function ProAdminDashboard() {
 
 // ─────────────────────────────────────────────
 function ProfileView({ user }) {
-  const { updateUser, pushToSheets } = useContext(DataCtx);
+  const { updateUser } = useContext(DataCtx);
   const [form, setForm] = useState({...user});
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = () => { updateUser(user.id, form); pushToSheets("ProfileUpdates",{id:user.id,updatedAt:new Date().toISOString()}); };
+  const save = () => { updateUser(user.id, form); };
 
   const isParticipant = user.role === ROLES.PARTICIPANT;
 
