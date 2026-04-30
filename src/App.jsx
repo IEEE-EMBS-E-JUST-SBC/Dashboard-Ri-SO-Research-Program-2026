@@ -927,27 +927,62 @@ function _OldParticipantDashboard_UNUSED({ user }) {
 
 function ParticipantProgress({ user }) {
   const p = user;
+
+  // Determine phase state from the "qualified" column in the sheet.
+  // If qualified === true/"TRUE"/"true"/1 → phases 1-3 done, phase 4 (Mentorship) in progress.
+  // Otherwise → phases 1-2 done (Accepted), phase 3 (Training) in progress.
+  const isQualified = p.qualified === true || p.qualified === "TRUE" || p.qualified === "true" || p.qualified === 1 || p.qualified === "1";
+  const completedUpTo = isQualified ? 3 : 2;   // phases with id <= this are "done"
+  const currentPhase  = isQualified ? 4 : 3;   // this phase is "in progress"
+
+  const getStatus = (phId) => {
+    if (phId <= completedUpTo) return "Accepted";
+    if (phId === currentPhase) return "In Progress";
+    return "Upcoming";
+  };
+  const getBadgeClass = (phId) => {
+    if (phId <= completedUpTo) return "b-qual";
+    if (phId === currentPhase) return "b-review";
+    return "b-phase";
+  };
+  const getCircleBg = (phId) => {
+    if (phId <= completedUpTo) return "var(--r1)";
+    if (phId === currentPhase) return "rgba(91,59,245,.1)";
+    return "var(--snow)";
+  };
+
   return (
     <div>
       <div className="card mb6">
-        <div className="card-header"><div className="card-title">6-Phase Progress</div></div>
+        <div className="card-header">
+          <div className="card-title">6-Phase Progress</div>
+          <span className={`badge ${isQualified?"b-qual":"b-review"}`} style={{fontSize:11}}>
+            {isQualified ? "✅ Qualified — Phase 4" : "⏳ Phase 3 — Training"}
+          </span>
+        </div>
         <div className="card-body">
           <div className="phase-line" style={{marginBottom:24}}>
             {PHASES.map(ph => (
-              <div key={ph.id} className={`ph-item ${ph.id<p.phase?"done":""} ${ph.id===p.phase?"current":""}`}>
-                <div className="ph-circle" style={{width:46,height:46,fontSize:18}}>{ph.id<p.phase?"✓":ph.icon}</div>
+              <div key={ph.id} className={`ph-item ${ph.id<=completedUpTo?"done":""} ${ph.id===currentPhase?"current":""}`}>
+                <div className="ph-circle" style={{width:46,height:46,fontSize:18}}>
+                  {ph.id<=completedUpTo ? "✓" : ph.icon}
+                </div>
                 <div className="ph-name">{ph.name}</div>
               </div>
             ))}
           </div>
           {PHASES.map(ph => (
             <div key={ph.id} style={{display:"flex",gap:14,padding:"14px 0",borderBottom:"1px solid var(--frost)",alignItems:"center"}}>
-              <div style={{width:36,height:36,borderRadius:"50%",background:ph.id<p.phase?"var(--r1)":ph.id===p.phase?"rgba(91,59,245,.1)":"var(--snow)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>{ph.id<p.phase?"✓":ph.icon}</div>
+              <div style={{width:36,height:36,borderRadius:"50%",background:getCircleBg(ph.id),display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>
+                {ph.id<=completedUpTo ? "✓" : ph.icon}
+              </div>
               <div style={{flex:1}}>
                 <div className="flex-between" style={{marginBottom:4}}>
-                  <span style={{fontSize:13,fontWeight:600,color:ph.id<=p.phase?"var(--ink)":"var(--mist)"}}>Phase {ph.id}: {ph.name}</span>
-                  <span className={`badge ${ph.id<p.phase?"b-qual":ph.id===p.phase?"b-review":"b-phase"}`} style={{background:ph.id>p.phase?"var(--snow)":""}}>
-                    {ph.id<p.phase?"Completed":ph.id===p.phase?"In Progress":"Upcoming"}
+                  <span style={{fontSize:13,fontWeight:600,color:ph.id<=currentPhase?"var(--ink)":"var(--mist)"}}>
+                    Phase {ph.id}: {ph.name}
+                  </span>
+                  <span className={`badge ${getBadgeClass(ph.id)}`} style={{background:ph.id>currentPhase?"var(--snow)":""}}>
+                    {getStatus(ph.id)}
                   </span>
                 </div>
                 <div className="txt-muted">{ph.desc}</div>
@@ -956,33 +991,50 @@ function ParticipantProgress({ user }) {
           ))}
         </div>
       </div>
-      <div className="g3">
-        {[{l:"Technical Score",v:Math.max(p.mlScore,p.modelingScore,p.electronicsScore),t:80},{l:"Portfolio Score",v:p.portfolioScore,t:75},{l:"Interview Score",v:p.interviewScore,t:75}].map(s => (
-          <div key={s.l} className="card">
-            <div className="card-body" style={{textAlign:"center",padding:"28px 20px"}}>
-              <div style={{fontFamily:"Fraunces,serif",fontSize:42,background:"var(--r1)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{s.v}</div>
-              <div style={{fontSize:14,fontWeight:700,marginTop:8}}>{s.l}</div>
-              <div className="txt-muted">Target: {s.t}+</div>
-              <div style={{marginTop:12}}><PBar val={s.v} color={s.v>=s.t?"pfill-g":""}/></div>
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
 
 function TrainingModules({ user }) {
-  const { pushToSheets } = useContext(DataCtx);
   const [tab, setTab] = useState(0);
-  const [sub, setSub] = useState({ week:"", note:"" });
-  const modules = [
-    { id:"M1", title:"Introduction to Biomedical AI",               track:"All",   type:"Lecture",  dur:"2h 15m", done:true  },
-    { id:"M2", title:"Deep Learning for Medical Imaging",           track:"AI & ML",type:"Lecture", dur:"3h 00m", done:true  },
-    { id:"M3", title:"CNNs in TensorFlow",                          track:"AI & ML",type:"Lab",     dur:"1h 45m", done:false },
-    { id:"M4", title:"Research Methodology & Ethics",               track:"All",   type:"Workshop", dur:"2h 30m", done:false },
-    { id:"M5", title:"Literature Review & IEEE Formatting",         track:"All",   type:"Webinar",  dur:"1h 30m", done:false },
+
+  // Normalize track value from sheet (case-insensitive)
+  const trackRaw = (user.track || "").toString().toLowerCase().trim();
+  const isMedicalImaging = trackRaw.includes("medical imaging") || trackRaw.includes("medical_imaging");
+
+  const medicalImagingModules = [
+    { id:"M1", title:"Introduction to Medical Imaging & Modalities",      type:"Lecture",  dur:"2h 00m" },
+    { id:"M2", title:"Image Preprocessing & Augmentation for Biomedical Data", type:"Lecture", dur:"2h 30m" },
+    { id:"M3", title:"Convolutional Neural Networks for Image Classification", type:"Lab",     dur:"2h 00m" },
+    { id:"M4", title:"Segmentation Techniques: U-Net & Variants",          type:"Lab",      dur:"2h 15m" },
+    { id:"M5", title:"Object Detection in Medical Images (YOLO, Faster R-CNN)", type:"Lecture", dur:"1h 45m" },
+    { id:"M6", title:"Transfer Learning with Pre-trained Models (ResNet, VGG)", type:"Lab",  dur:"2h 00m" },
+    { id:"M7", title:"Research Methodology & IEEE Paper Writing",          type:"Workshop", dur:"2h 30m" },
+    { id:"M8", title:"Capstone Project Kickoff & Dataset Selection",       type:"Workshop", dur:"1h 30m" },
   ];
+
+  const medicalImagingReading = [
+    "Litjens et al. — A Survey on Deep Learning in Medical Image Analysis (Medical Image Analysis, 2017)",
+    "Ronneberger et al. — U-Net: Convolutional Networks for Biomedical Image Segmentation (MICCAI, 2015)",
+    "Shen et al. — Deep Learning in Medical Image Analysis (Annual Review of Biomedical Engineering, 2017)",
+    "Goodfellow et al. — Deep Learning, Chapters 9 & 10 (MIT Press, 2016)",
+    "IEEE EMBS Guidelines for Clinical AI Research & Ethical Considerations",
+  ];
+
+  if (!isMedicalImaging) {
+    return (
+      <div className="card">
+        <div className="card-body" style={{textAlign:"center",padding:"64px 24px"}}>
+          <div style={{fontSize:48,marginBottom:16}}>📚</div>
+          <div style={{fontSize:17,fontWeight:700,color:"var(--ink)",marginBottom:8}}>Training content coming soon</div>
+          <div style={{fontSize:13,color:"var(--ink3)",maxWidth:380,margin:"0 auto",lineHeight:1.7}}>
+            Your track-specific training materials haven't been published yet. Check back after the orientation session.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="tabs">
@@ -990,71 +1042,72 @@ function TrainingModules({ user }) {
           <button key={i} className={`tab ${tab===i?"active":""}`} onClick={()=>setTab(i)}>{t}</button>
         ))}
       </div>
+
       {tab===0&&(
         <div className="card">
-          <div className="card-header"><div className="card-title">Training Modules</div><div className="txt-muted">{modules.filter(m=>m.done).length}/{modules.length} completed</div></div>
+          <div className="card-header">
+            <div><div className="card-title">Medical Imaging Training Modules</div><div className="card-sub">Track: Medical Imaging · {medicalImagingModules.length} modules</div></div>
+          </div>
           <div className="card-body" style={{padding:0}}>
             <table className="tbl">
-              <thead><tr><th>#</th><th>Title</th><th>Track</th><th>Type</th><th>Duration</th><th>Status</th><th></th></tr></thead>
-              <tbody>{modules.map(m=>(
+              <thead><tr><th>#</th><th>Title</th><th>Type</th><th>Duration</th><th>Action</th><th>Due</th></tr></thead>
+              <tbody>{medicalImagingModules.map(m=>(
                 <tr key={m.id}>
                   <td className="mono" style={{color:"var(--mist)",fontSize:11}}>{m.id}</td>
                   <td style={{fontWeight:600}}>{m.title}</td>
-                  <td><span className="tag">{m.track}</span></td>
                   <td><span className="tag">{m.type}</span></td>
                   <td className="mono" style={{fontSize:12}}>{m.dur}</td>
-                  <td><span className={`badge ${m.done?"b-qual":"b-review"}`}>{m.done?"Done":"Pending"}</span></td>
-                  <td><button className="btn btn-o btn-sm">{m.done?"Rewatch":"Watch"}</button></td>
+                  <td>
+                    <button className="btn btn-o btn-sm" disabled style={{opacity:0.45,cursor:"not-allowed"}}>Watch</button>
+                  </td>
+                  <td style={{fontSize:11,color:"var(--ink3)",whiteSpace:"nowrap"}}>Due will be determined later</td>
                 </tr>
               ))}</tbody>
             </table>
           </div>
         </div>
       )}
+
       {tab===1&&(
         <div className="card">
-          <div className="card-header"><div className="card-title">Curated Reading List</div></div>
+          <div className="card-header"><div className="card-title">Curated Reading List — Medical Imaging</div></div>
           <div className="card-body">
-            {["Goodfellow et al. — Deep Learning (MIT Press, 2016)","Litjens et al. — Survey of Deep Learning in Medical Image Analysis","IEEE EMBS Guidelines for Clinical AI Research","Python for Data Science Handbook — VanderPlas"].map((r,i)=>(
+            {medicalImagingReading.map((r,i)=>(
               <div key={i} style={{display:"flex",gap:12,padding:"12px 0",borderBottom:"1px solid var(--frost)",alignItems:"center"}}>
                 <span style={{fontSize:20}}>📖</span>
                 <span style={{fontSize:13,fontWeight:500,flex:1}}>{r}</span>
-                <button className="btn btn-o btn-sm">IEEE Xplore →</button>
+                <button className="btn btn-o btn-sm" disabled style={{opacity:0.45,cursor:"not-allowed"}}>IEEE Xplore →</button>
               </div>
             ))}
+            <div style={{marginTop:16,padding:"12px 14px",background:"var(--snow)",borderRadius:10,fontSize:12,color:"var(--ink3)"}}>
+              🔒 Links will be activated after the orientation session on <strong>8 May</strong>.
+            </div>
           </div>
         </div>
       )}
+
       {tab===2&&(
         <div className="card">
           <div className="card-header"><div className="card-title">Weekly Assignment Submission</div></div>
-          <div className="card-body">
-            <div className="fg"><label className="flabel">Week Number</label>
-              <select className="finput fselect" value={sub.week} onChange={e=>setSub({...sub,week:e.target.value})}>
-                <option value="">Select week...</option>
-                {[1,2,3,4,5,6,7,8].map(w=><option key={w}>Week {w}</option>)}
-              </select>
+          <div className="card-body" style={{textAlign:"center",padding:"48px 24px"}}>
+            <div style={{fontSize:40,marginBottom:12}}>📝</div>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:8}}>Submissions not open yet</div>
+            <div style={{fontSize:13,color:"var(--ink3)",maxWidth:340,margin:"0 auto",lineHeight:1.7}}>
+              Assignment submissions will open after the orientation session on <strong>8 May</strong>. Due dates will be determined then.
             </div>
-            <div className="fg"><label className="flabel">Notes / Summary</label>
-              <textarea className="finput ftextarea" value={sub.note} onChange={e=>setSub({...sub,note:e.target.value})} placeholder="Describe what you completed this week..." />
-            </div>
-            <div className="fg"><label className="flabel">Upload File (PDF/ZIP)</label><input type="file" className="finput" style={{paddingTop:6}} /></div>
-            <button className="btn btn-p" onClick={()=>pushToSheets("Assignments",{participantId:user.id,week:sub.week,note:sub.note,submittedAt:new Date().toISOString()})}>Submit → Google Sheets</button>
           </div>
         </div>
       )}
+
       {tab===3&&(
         <div className="card">
           <div className="card-header"><div className="card-title">Capstone Project Portal</div></div>
-          <div className="card-body">
-            <div className="alert alert-info">📌 The capstone project is the culminating deliverable of Phase III and foundation for Phase IV–VI research.</div>
-            <div className="fg"><label className="flabel">Project Title</label><input className="finput" placeholder="e.g. Federated Learning for Multi-Site MRI Tumor Segmentation" /></div>
-            <div className="fg"><label className="flabel">Abstract (max 250 words)</label><textarea className="finput ftextarea" style={{minHeight:100}} /></div>
-            <div className="fg"><label className="flabel">GitHub Repository URL</label><input className="finput" placeholder="https://github.com/..." /></div>
-            <div className="fg"><label className="flabel">Status</label>
-              <select className="finput fselect"><option>Planning</option><option>In Progress</option><option>Review Ready</option><option>Submitted</option></select>
+          <div className="card-body" style={{textAlign:"center",padding:"48px 24px"}}>
+            <div style={{fontSize:40,marginBottom:12}}>🔬</div>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:8}}>Capstone portal coming soon</div>
+            <div style={{fontSize:13,color:"var(--ink3)",maxWidth:340,margin:"0 auto",lineHeight:1.7}}>
+              The capstone project portal will be activated once your training track begins. Check back after the orientation on <strong>8 May</strong>.
             </div>
-            <button className="btn btn-p" onClick={()=>pushToSheets("Capstone",{participantId:user.id,submittedAt:new Date().toISOString()})}>Save & Push to Sheets</button>
           </div>
         </div>
       )}
@@ -1162,35 +1215,40 @@ function NoveltyTool({ user }) {
 }
 
 function CompetitionsView({ user }) {
-  const { pushToSheets } = useContext(DataCtx);
   return (
     <div>
+      <div style={{marginBottom:20,padding:"14px 18px",background:"linear-gradient(135deg,rgba(91,59,245,.06),rgba(26,109,255,.04))",border:"1px solid rgba(91,59,245,.12)",borderRadius:12,fontSize:13,color:"var(--ink2)",display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:20}}>📢</span>
+        <span>Enrollment details will be announced in the <strong>orientation session on 8 May</strong>. All competitions are currently open.</span>
+      </div>
       <div className="g3 mb6">
         {COMPETITIONS.map(c=>(
           <div key={c.id} className="card">
-            <div style={{padding:"14px 18px 0"}}><span className={`badge ${c.status==="Closing Soon"?"b-close":"b-open"}`}>{c.status}</span></div>
+            <div style={{padding:"14px 18px 0"}}><span className="badge b-open">Open</span></div>
             <div className="card-body">
               <div style={{fontSize:32,marginBottom:8}}>{c.id==="C001"?"🧠":c.id==="C002"?"🏥":"🔬"}</div>
               <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>{c.name}</div>
               <div className="txt-muted">Track: {c.track===1?"AI & ML":c.track===2?"Modeling":"Electronics"}</div>
               <div className="txt-muted" style={{marginBottom:12}}>Deadline: <span className="mono" style={{fontWeight:600,color:"var(--ink)"}}>{c.deadline}</span></div>
-              <button className="btn btn-p btn-sm" onClick={()=>pushToSheets("CompetitionEnrollments",{participantId:user.id,competition:c.name,enrolledAt:new Date().toISOString()})}>Enroll & Track</button>
+              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <button className="btn btn-p btn-sm" disabled style={{opacity:0.45,cursor:"not-allowed"}}>Enroll & Track</button>
+                <span style={{fontSize:11,color:"var(--ink3)"}}>Will be announced next week in the orientation session</span>
+              </div>
             </div>
           </div>
         ))}
       </div>
       <div className="card">
-        <div className="card-header"><div className="card-title">Submission Tracker</div></div>
+        <div className="card-header"><div className="card-title">Competition Overview</div></div>
         <div className="card-body" style={{padding:0}}>
           <table className="tbl">
-            <thead><tr><th>Competition</th><th>Track</th><th>Deadline</th><th>Enrolled</th><th>Status</th></tr></thead>
+            <thead><tr><th>Competition</th><th>Track</th><th>Deadline</th><th>Status</th></tr></thead>
             <tbody>{COMPETITIONS.map(c=>(
               <tr key={c.id}>
                 <td style={{fontWeight:600}}>{c.name}</td>
                 <td><TrackBadge track={c.track} label={c.track===1?"AI & ML":c.track===2?"Modeling":"Electronics"}/></td>
                 <td className="mono" style={{fontSize:12}}>{c.deadline}</td>
-                <td>{c.enrolled}</td>
-                <td><span className={`badge ${c.status==="Closing Soon"?"b-close":"b-open"}`}>{c.status}</span></td>
+                <td><span className="badge b-open">Open</span></td>
               </tr>
             ))}</tbody>
           </table>
@@ -1216,30 +1274,38 @@ function ResourceRequests({ user }) {
 }
 
 function EnrichmentCalendar({ user }) {
-  const { pushToSheets } = useContext(DataCtx);
   return (
     <div>
       <div className="g4 mb6">
-        {[{l:"Total Events",v:"12",icon:"📅"},{l:"Webinars",v:"8",icon:"🎙️"},{l:"Workshops",v:"4",icon:"🛠️"},{l:"Registered",v:"3",icon:"✅"}].map(s=>(
+        {[{l:"Total Events",v:"1",icon:"📅"},{l:"Sessions",v:"1",icon:"🎙️"},{l:"Workshops",v:"0",icon:"🛠️"},{l:"Registered",v:"0",icon:"✅"}].map(s=>(
           <div key={s.l} className="stat"><div className="stat-icon">{s.icon}</div><div className="stat-val">{s.v}</div><div className="stat-label">{s.l}</div></div>
         ))}
       </div>
       <div className="card">
-        <div className="card-header"><div className="card-title">March 2026 — Enrichment Calendar</div></div>
-        <div className="card-body" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          {WEBINARS.map(w=>(
-            <div key={w.id} className="event-box">
-              <div className="edate"><div className="emon">{new Date(w.date).toLocaleString("en",{month:"short"})}</div><div className="eday">{new Date(w.date).getDate()}</div></div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:600}}>{w.title}</div>
-                <div className="txt-muted">{w.type} · {w.speaker} · {w.registered} registered</div>
-                <div style={{display:"flex",gap:6,marginTop:8}}>
-                  <button className="btn btn-p btn-sm" onClick={()=>pushToSheets("CalendarRegistrations",{event:w.title,participantId:user.id})}>Register</button>
-                  <button className="btn btn-o btn-sm">Details</button>
-                </div>
+        <div className="card-header"><div className="card-title">April / May 2026 — Enrichment Calendar</div></div>
+        <div className="card-body">
+          <div className="event-box" style={{border:"2px solid rgba(91,59,245,.25)",background:"linear-gradient(135deg,rgba(91,59,245,.04),rgba(26,109,255,.03))",borderRadius:12,padding:"20px 18px"}}>
+            <div className="edate" style={{minWidth:52}}>
+              <div className="emon" style={{background:"var(--r1)",color:"white",borderRadius:"6px 6px 0 0",padding:"3px 6px",fontSize:10,fontWeight:800,letterSpacing:.5,textAlign:"center"}}>MAY</div>
+              <div className="eday" style={{fontSize:28,fontWeight:800,color:"var(--violet)",textAlign:"center",lineHeight:1.1,padding:"4px 0"}}>8</div>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                <span style={{fontSize:15,fontWeight:700,color:"var(--ink)"}}>Orientation Session</span>
+                <span className="badge b-qual" style={{fontSize:10}}>Confirmed</span>
+              </div>
+              <div className="txt-muted" style={{marginBottom:6}}>Session · 9:00 PM · IEEE E-JUST EMBS SBC — Ri-Sō 理創 2026</div>
+              <div style={{fontSize:12,color:"var(--violet)",fontWeight:600,marginBottom:10}}>
+                🗓 Thursday, 8 May 2026 · 9:00 PM
+              </div>
+              <div style={{fontSize:12,color:"var(--ink3)",background:"var(--snow)",borderRadius:8,padding:"8px 12px",lineHeight:1.6}}>
+                Competition enrollment details, training schedules, and program timelines will be announced at this session.
               </div>
             </div>
-          ))}
+          </div>
+          <div style={{marginTop:24,textAlign:"center",fontSize:12,color:"var(--ink3)"}}>
+            More events will be added after the orientation session. Stay tuned!
+          </div>
         </div>
       </div>
     </div>
@@ -3386,7 +3452,6 @@ function AppShell() {
         { id:"progress",     icon:"📊", label:"My Progress" },
         { id:"training",     icon:"📚", label:"Training Modules" },
         { id:"research",     icon:"🔬", label:"Research Hub" },
-        { id:"novelty",      icon:"💡", label:"Novelty Tool" },
         { id:"competitions", icon:"🏆", label:"Competitions" },
         { id:"resources",    icon:"⚙️", label:"Request Resources" },
         { id:"calendar",     icon:"📅", label:"Enrichment Calendar" },
@@ -3397,7 +3462,6 @@ function AppShell() {
         progress:     <ParticipantProgress user={user}/>,
         training:     <TrainingModules user={user}/>,
         research:     <ResearchHub user={user}/>,
-        novelty:      <NoveltyTool user={user}/>,
         competitions: <CompetitionsView user={user}/>,
         resources:    <ResourceRequests user={user}/>,
         calendar:     <EnrichmentCalendar user={user}/>,
