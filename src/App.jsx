@@ -1425,31 +1425,404 @@ const MICCAI_CHALLENGES = {
 const SCORING_WEIGHTS = { pipeline: 0.20, architecture: 0.30, optimization: 0.25, validation: 0.25 };
 
 // ─────────────────────────────────────────────
+//  SPRINT TASK MANAGER (Authorized Roles)
+// ─────────────────────────────────────────────
+function SprintTaskManager({ user, challenge, sprintIndex, sprint, tasks, onTasksChange, pushToSheets }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [form, setForm] = useState({ title:"", description:"", assignedTo:"", deadline:"", notes:"" });
+  const [saving, setSaving] = useState(false);
+  const [confirmingId, setConfirmingId] = useState(null);
+  const [scoreInput, setScoreInput] = useState({});
+  const [feedbackInput, setFeedbackInput] = useState({});
+
+  const sprintTasks = tasks.filter(t => t.challengeId === challenge.id && t.sprintIndex === sprintIndex);
+
+  const statusColor = { draft:"#E8860A", assigned:"#1A6DFF", submitted:"#5B3BF5", confirmed:"#0F9F6E" };
+  const statusLabel = { draft:"Draft", assigned:"Assigned", submitted:"Submitted", confirmed:"Confirmed" };
+
+  const openNew = () => {
+    setForm({ title:"", description:"", assignedTo:"", deadline:"", notes:"" });
+    setEditingTask(null);
+    setShowForm(true);
+  };
+
+  const openEdit = (t) => {
+    setForm({ title:t.title, description:t.description, assignedTo:t.assignedTo, deadline:t.deadline||"", notes:t.notes||"" });
+    setEditingTask(t);
+    setShowForm(true);
+  };
+
+  const saveTask = async () => {
+    if (!form.title.trim()) return;
+    setSaving(true);
+    const now = new Date().toISOString();
+    if (editingTask) {
+      const updated = { ...editingTask, ...form, updatedAt: now };
+      await pushToSheets("SprintTasks", updated, true);
+      onTasksChange(prev => prev.map(t => t.id === editingTask.id ? updated : t));
+    } else {
+      const newTask = {
+        id: `T-${Date.now()}`,
+        challengeId: challenge.id,
+        sprintIndex,
+        ...form,
+        status: "draft",
+        createdBy: user.email,
+        createdAt: now,
+        assignedAt: "",
+        submittedAt: "",
+        confirmedAt: "",
+        fileLink: "",
+        score: "",
+        feedback: ""
+      };
+      await pushToSheets("SprintTasks", newTask);
+      onTasksChange(prev => [...prev, newTask]);
+    }
+    setSaving(false);
+    setShowForm(false);
+    setEditingTask(null);
+  };
+
+  const assignTask = async (task) => {
+    if (!task.assignedTo.trim()) return;
+    const updated = { ...task, status:"assigned", assignedAt: new Date().toISOString() };
+    await pushToSheets("SprintTasks", updated, true);
+    onTasksChange(prev => prev.map(t => t.id === task.id ? updated : t));
+  };
+
+  const confirmTask = async (task) => {
+    const sc = scoreInput[task.id] || "";
+    const fb = feedbackInput[task.id] || "";
+    const updated = { ...task, status:"confirmed", score: sc, feedback: fb, confirmedAt: new Date().toISOString() };
+    await pushToSheets("SprintTasks", updated, true);
+    onTasksChange(prev => prev.map(t => t.id === task.id ? updated : t));
+    setConfirmingId(null);
+  };
+
+  const deleteTask = async (task) => {
+    onTasksChange(prev => prev.filter(t => t.id !== task.id));
+  };
+
+  return (
+    <div style={{marginTop:20}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+        <div style={{fontSize:12,fontWeight:700,color:"var(--ink3)",letterSpacing:1,textTransform:"uppercase"}}>Sprint Tasks — {sprint.weeks}</div>
+        <button onClick={openNew} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,border:"none",background:"var(--violet)",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+          + Add Task
+        </button>
+      </div>
+
+      {/* Task Form */}
+      {showForm && (
+        <div style={{padding:20,borderRadius:14,border:"2px solid var(--violet)",background:"#f9f8ff",marginBottom:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:"var(--violet)",marginBottom:14}}>{editingTask ? "Edit Task" : "New Task"}</div>
+          <div style={{display:"grid",gap:10}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:"var(--ink3)",marginBottom:4}}>Task Title *</div>
+              <input value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))}
+                placeholder="e.g. Implement co-registration pipeline"
+                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}} />
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:"var(--ink3)",marginBottom:4}}>Description</div>
+              <textarea value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))}
+                placeholder="Detailed task instructions..."
+                rows={3}
+                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none",resize:"vertical"}} />
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div>
+                <div style={{fontSize:11,fontWeight:600,color:"var(--ink3)",marginBottom:4}}>Assign To (email or TM role)</div>
+                <input value={form.assignedTo} onChange={e=>setForm(p=>({...p,assignedTo:e.target.value}))}
+                  placeholder="e.g. TM1, TM2 or email@..."
+                  style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}} />
+              </div>
+              <div>
+                <div style={{fontSize:11,fontWeight:600,color:"var(--ink3)",marginBottom:4}}>Deadline</div>
+                <input type="date" value={form.deadline} onChange={e=>setForm(p=>({...p,deadline:e.target.value}))}
+                  style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}} />
+              </div>
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:"var(--ink3)",marginBottom:4}}>Notes for member</div>
+              <input value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))}
+                placeholder="Resources, hints, references..."
+                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}} />
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:14}}>
+            <button onClick={saveTask} disabled={saving} style={{padding:"8px 20px",borderRadius:8,border:"none",background:"var(--violet)",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:saving?0.6:1}}>
+              {saving ? "Saving…" : editingTask ? "Save Changes" : "Create Task"}
+            </button>
+            <button onClick={()=>{setShowForm(false);setEditingTask(null);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid var(--frost)",background:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"var(--ink3)"}}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Task List */}
+      {sprintTasks.length === 0 ? (
+        <div style={{padding:"20px 16px",borderRadius:10,border:"1px dashed var(--frost)",textAlign:"center",color:"var(--ink3)",fontSize:13}}>
+          No tasks created for this sprint yet. Click <strong>+ Add Task</strong> to create one.
+        </div>
+      ) : sprintTasks.map(task => (
+        <div key={task.id} style={{padding:16,borderRadius:12,border:`1px solid ${statusColor[task.status]}30`,background:`${statusColor[task.status]}06`,marginBottom:10}}>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:8}}>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                <span style={{width:8,height:8,borderRadius:"50%",background:statusColor[task.status],display:"inline-block",flexShrink:0}} />
+                <span style={{fontSize:13,fontWeight:700,color:"var(--ink)"}}>{task.title}</span>
+                <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,background:`${statusColor[task.status]}18`,color:statusColor[task.status],border:`1px solid ${statusColor[task.status]}30`}}>{statusLabel[task.status]}</span>
+              </div>
+              {task.description && <div style={{fontSize:12,color:"var(--ink2)",marginBottom:4,lineHeight:1.5,paddingLeft:16}}>{task.description}</div>}
+              <div style={{display:"flex",gap:12,paddingLeft:16,flexWrap:"wrap"}}>
+                {task.assignedTo && <span style={{fontSize:11,color:"var(--ink3)"}}>👤 {task.assignedTo}</span>}
+                {task.deadline && <span style={{fontSize:11,color:"var(--ink3)"}}>📅 {task.deadline}</span>}
+                {task.fileLink && <span style={{fontSize:11,color:"var(--azure)"}}>📎 <a href={task.fileLink} target="_blank" rel="noreferrer" style={{color:"var(--azure)"}}>Submitted file</a></span>}
+                {task.score && <span style={{fontSize:11,fontWeight:700,color:"#0F9F6E"}}>⭐ Score: {task.score}/100</span>}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:6,flexShrink:0}}>
+              {task.status === "draft" && (
+                <button onClick={()=>assignTask(task)} style={{padding:"5px 12px",borderRadius:7,border:"none",background:"#1A6DFF",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+                  Assign →
+                </button>
+              )}
+              {task.status === "submitted" && (
+                <button onClick={()=>setConfirmingId(task.id)} style={{padding:"5px 12px",borderRadius:7,border:"none",background:"#0F9F6E",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+                  Review & Score
+                </button>
+              )}
+              <button onClick={()=>openEdit(task)} style={{padding:"5px 10px",borderRadius:7,border:"1px solid var(--frost)",background:"#fff",color:"var(--ink3)",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+                ✏️
+              </button>
+              <button onClick={()=>deleteTask(task)} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #fde8ec",background:"#fff5f7",color:"var(--rose)",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+                🗑
+              </button>
+            </div>
+          </div>
+
+          {/* Confirm / Score Panel */}
+          {confirmingId === task.id && (
+            <div style={{marginTop:10,padding:14,borderRadius:10,border:"1px solid #0F9F6E40",background:"#f0fdf8"}} onClick={e=>e.stopPropagation()}>
+              <div style={{fontSize:12,fontWeight:700,color:"#0F9F6E",marginBottom:10}}>Review Submission</div>
+              {task.fileLink && (
+                <div style={{marginBottom:10,fontSize:12,color:"var(--ink2)"}}>
+                  📎 Submitted file: <a href={task.fileLink} target="_blank" rel="noreferrer" style={{color:"var(--azure)",fontWeight:600}}>View File</a>
+                </div>
+              )}
+              <div style={{display:"grid",gridTemplateColumns:"120px 1fr",gap:10,marginBottom:12}}>
+                <div>
+                  <div style={{fontSize:11,fontWeight:600,color:"var(--ink3)",marginBottom:4}}>Score (0–100)</div>
+                  <input type="number" min={0} max={100} value={scoreInput[task.id]||""} onChange={e=>setScoreInput(p=>({...p,[task.id]:e.target.value}))}
+                    placeholder="85"
+                    style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}} />
+                </div>
+                <div>
+                  <div style={{fontSize:11,fontWeight:600,color:"var(--ink3)",marginBottom:4}}>Feedback for member</div>
+                  <input value={feedbackInput[task.id]||""} onChange={e=>setFeedbackInput(p=>({...p,[task.id]:e.target.value}))}
+                    placeholder="Great work on the registration pipeline..."
+                    style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}} />
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>confirmTask(task)} style={{padding:"7px 16px",borderRadius:8,border:"none",background:"#0F9F6E",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+                  ✓ Confirm & Score
+                </button>
+                <button onClick={()=>setConfirmingId(null)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--frost)",background:"#fff",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"var(--ink3)"}}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Show feedback if confirmed */}
+          {task.status === "confirmed" && task.feedback && (
+            <div style={{marginTop:8,padding:"10px 14px",borderRadius:8,background:"#f0fdf8",border:"1px solid #0F9F6E30",fontSize:12,color:"var(--ink2)"}}>
+              💬 <strong>Feedback:</strong> {task.feedback}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+//  MEMBER TASK VIEW (Members only)
+// ─────────────────────────────────────────────
+function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets }) {
+  const userKey = (user.teamRole || "").toLowerCase().trim();
+  const userEmail = (user.email || "").toLowerCase().trim();
+
+  // Member sees tasks assigned to their role or email, that are assigned/submitted/confirmed
+  const myTasks = tasks.filter(t =>
+    t.challengeId === challenge.id &&
+    t.status !== "draft" &&
+    (t.assignedTo.toLowerCase().includes(userKey) || t.assignedTo.toLowerCase().includes(userEmail))
+  );
+
+  const [fileLinks, setFileLinks] = useState({});
+  const [submitting, setSubmitting] = useState(null);
+
+  const submitTask = async (task) => {
+    const link = fileLinks[task.id] || "";
+    if (!link.trim()) return;
+    setSubmitting(task.id);
+    const updated = { ...task, status:"submitted", fileLink: link, submittedAt: new Date().toISOString() };
+    await pushToSheets("SprintTasks", updated, true);
+    onTasksChange(prev => prev.map(t => t.id === task.id ? updated : t));
+    setSubmitting(null);
+  };
+
+  const phaseColors = ["#E53E5C","#5B3BF5","#0EA5C5","#0F9F6E"];
+  const statusColor = { assigned:"#1A6DFF", submitted:"#5B3BF5", confirmed:"#0F9F6E" };
+  const statusLabel = { assigned:"To Do", submitted:"Pending Review", confirmed:"Completed ✓" };
+
+  if (myTasks.length === 0) {
+    return (
+      <div style={{padding:"48px 24px",textAlign:"center",borderRadius:16,border:"1px dashed var(--frost)",background:"var(--snow)"}}>
+        <div style={{fontSize:40,marginBottom:12}}>📋</div>
+        <div style={{fontSize:15,fontWeight:700,color:"var(--ink)",marginBottom:8}}>No tasks assigned yet</div>
+        <div style={{fontSize:13,color:"var(--ink3)",maxWidth:340,margin:"0 auto",lineHeight:1.7}}>
+          Your mentor or associate researcher will assign tasks to you. Check back after your next team meeting.
+        </div>
+      </div>
+    );
+  }
+
+  // Group by sprint
+  const bySprint = [0,1,2,3].map(si => ({
+    sprint: challenge.sprints[si],
+    si,
+    tasks: myTasks.filter(t => t.sprintIndex === si)
+  })).filter(g => g.tasks.length > 0);
+
+  return (
+    <div>
+      {bySprint.map(({ sprint, si, tasks: stasks }) => (
+        <div key={si} style={{marginBottom:24}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+            <span style={{padding:"4px 14px",borderRadius:20,fontSize:11,fontWeight:700,color:phaseColors[si],background:`${phaseColors[si]}12`,border:`1px solid ${phaseColors[si]}30`}}>
+              {sprint.weeks}
+            </span>
+            <span style={{fontSize:14,fontWeight:700,color:"var(--ink)"}}>{sprint.label}</span>
+          </div>
+          <div style={{display:"grid",gap:12,paddingLeft:8,borderLeft:`3px solid ${phaseColors[si]}40`}}>
+            {stasks.map(task => (
+              <div key={task.id} style={{padding:18,borderRadius:14,border:`1px solid ${statusColor[task.status]}30`,background:"#fff",boxShadow:"0 2px 10px rgba(91,59,245,.06)"}}>
+                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:10}}>
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                      <span style={{fontSize:14,fontWeight:700,color:"var(--ink)"}}>{task.title}</span>
+                      <span style={{fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,background:`${statusColor[task.status]}15`,color:statusColor[task.status],border:`1px solid ${statusColor[task.status]}30`}}>
+                        {statusLabel[task.status]}
+                      </span>
+                    </div>
+                    {task.description && <div style={{fontSize:13,color:"var(--ink2)",lineHeight:1.6,marginBottom:6}}>{task.description}</div>}
+                    {task.notes && <div style={{fontSize:12,color:"var(--ink3)",padding:"6px 10px",background:"var(--snow)",borderRadius:7,marginBottom:6}}>💡 {task.notes}</div>}
+                    <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                      {task.deadline && <span style={{fontSize:11,color:"var(--ink3)"}}>📅 Due: {task.deadline}</span>}
+                    </div>
+                  </div>
+                  {task.status === "confirmed" && task.score && (
+                    <div style={{textAlign:"center",flexShrink:0}}>
+                      <div style={{fontSize:28,fontWeight:900,color:"#0F9F6E",lineHeight:1}}>{task.score}</div>
+                      <div style={{fontSize:10,color:"var(--ink3)"}}>/ 100</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Confirmed feedback */}
+                {task.status === "confirmed" && task.feedback && (
+                  <div style={{padding:"10px 14px",borderRadius:9,background:"#f0fdf8",border:"1px solid #0F9F6E30",fontSize:13,color:"var(--ink2)",marginBottom:12}}>
+                    💬 <strong>Mentor feedback:</strong> {task.feedback}
+                  </div>
+                )}
+
+                {/* Submitted state */}
+                {task.status === "submitted" && (
+                  <div style={{padding:"10px 14px",borderRadius:9,background:"#f5f3ff",border:"1px solid #5B3BF530",fontSize:13,color:"var(--ink2)"}}>
+                    ⏳ Submitted and pending review by your mentor.
+                    {task.fileLink && <span> <a href={task.fileLink} target="_blank" rel="noreferrer" style={{color:"var(--azure)",fontWeight:600}}>View your file →</a></span>}
+                  </div>
+                )}
+
+                {/* Submission form for assigned tasks */}
+                {task.status === "assigned" && (
+                  <div style={{marginTop:8,padding:14,borderRadius:10,background:"var(--snow)",border:"1px solid var(--frost)"}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"var(--ink)",marginBottom:8}}>📎 Submit your work</div>
+                    <div style={{fontSize:12,color:"var(--ink3)",marginBottom:10}}>Upload your file to Google Drive and paste the shareable link below.</div>
+                    <div style={{display:"flex",gap:8}}>
+                      <input
+                        value={fileLinks[task.id]||""}
+                        onChange={e=>setFileLinks(p=>({...p,[task.id]:e.target.value}))}
+                        placeholder="Paste Google Drive / GitHub link here..."
+                        style={{flex:1,padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}}
+                      />
+                      <button
+                        onClick={()=>submitTask(task)}
+                        disabled={submitting===task.id || !fileLinks[task.id]?.trim()}
+                        style={{padding:"9px 18px",borderRadius:8,border:"none",background:"var(--violet)",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:(submitting===task.id||!fileLinks[task.id]?.trim())?0.5:1,whiteSpace:"nowrap"}}>
+                        {submitting===task.id ? "Submitting…" : "Submit →"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 //  MICCAI CHALLENGES PAGE COMPONENT
 // ─────────────────────────────────────────────
 function MICCAIChallenges({ user }) {
+  const { pushToSheets } = useContext(DataCtx);
   const challengeId = (user.challengeId || "").toString().toUpperCase().trim();
   const teamRole = (user.teamRole || "").toString().toLowerCase().trim();
 
   const isMentor = teamRole === "mentor";
   const isAssociate = teamRole === "associate_researcher" || teamRole === "associate";
   const isAdmin = teamRole === "board_admin" || teamRole === "admin";
-  // Only mentors and admins can switch between challenges; members are locked to their own
+  const isAuthorized = isMentor || isAssociate || isAdmin;
   const canSwitchChallenge = isMentor || isAdmin;
 
   const [activeChallenge, setActiveChallenge] = useState(
     MICCAI_CHALLENGES[challengeId] ? challengeId : Object.keys(MICCAI_CHALLENGES)[0]
   );
-  // Members default to "mytasks"; mentors/associates default to "overview"
-  const [mainTab, setMainTab] = useState((isMentor || isAssociate || isAdmin) ? "overview" : "mytasks");
+  const [mainTab, setMainTab] = useState(isAuthorized ? "overview" : "mytasks");
   const [activeSprint, setActiveSprint] = useState(0);
   const [expandedTasks, setExpandedTasks] = useState({});
   const [scores, setScores] = useState({ pipeline: 0, architecture: 0, optimization: 0, validation: 0 });
   const [animIn, setAnimIn] = useState(true);
+  const [sprintTasks, setSprintTasks] = useState([]);
+  const [loadingTasks, setLoadingTasks] = useState(true);
 
   const challenge = MICCAI_CHALLENGES[activeChallenge];
-
   const userRoleKey = isMentor ? "mentor" : isAssociate ? "associate" : isAdmin ? "board_admin" : teamRole || "TM1";
+
+  useEffect(() => {
+    sheetsAPI.get("SprintTasks").then(data => {
+      if (Array.isArray(data)) setSprintTasks(data);
+      setLoadingTasks(false);
+    }).catch(() => setLoadingTasks(false));
+  }, []);
+
+  const pushTaskToSheets = async (sheet, data, isUpdate) => {
+    if (isUpdate) {
+      await sheetsAPI.updateByMatch(sheet, "id", data.id, data);
+    } else {
+      await pushToSheets(sheet, data);
+    }
+  };
 
   const totalScore = Math.round(
     scores.pipeline * SCORING_WEIGHTS.pipeline * 5 +
@@ -1552,10 +1925,10 @@ function MICCAIChallenges({ user }) {
         </div>
       )}
 
-      {/* Main Navigation Tabs — members only see their tasks + sprint view; mentors/admins see everything */}
+      {/* Main Navigation Tabs */}
       <div style={{display:"flex",gap:6,background:"var(--snow)",padding:5,borderRadius:12,border:"1px solid var(--frost)",marginBottom:20,flexWrap:"wrap"}}>
-        {(canSwitchChallenge || isAssociate
-          ? [["overview","🎯","Overview"],["sprints","📅","Sprint Plan"],["mytasks","✅","My Tasks"],["assess","📊","Assessment"]]
+        {(isAuthorized
+          ? [["overview","🎯","Overview"],["sprints","📅","Sprint Plan"],["manage","📋","Manage Tasks"],["assess","📊","Assessment"]]
           : [["mytasks","✅","My Tasks"],["sprints","📅","Sprint Plan"]]
         ).map(([id,ic,lb]) => (
           <button key={id} className={`miccai-tab ${mainTab===id?"active":""}`} onClick={() => setMainTab(id)}>{ic} {lb}</button>
@@ -1716,90 +2089,60 @@ function MICCAIChallenges({ user }) {
         </div>
       )}
 
-      {/* ── TAB: MY TASKS ── */}
+      {/* ── TAB: MY TASKS (Members only) ── */}
       {mainTab === "mytasks" && (
         <div className="miccai-fadein">
           <div style={{padding:"14px 18px",borderRadius:12,background:`${challenge.color}10`,border:`1px solid ${challenge.color}30`,marginBottom:20,display:"flex",alignItems:"center",gap:12}}>
             <span style={{fontSize:22}}>{challenge.icon}</span>
             <div>
               <div style={{fontSize:13,fontWeight:700,color:"var(--ink)"}}>Your Role: <span style={{color:challenge.color}}>{roleLabel(userRoleKey)}</span></div>
-              <div style={{fontSize:12,color:"var(--ink3)"}}>Tasks tailored to your role across all 4 sprint milestones</div>
+              <div style={{fontSize:12,color:"var(--ink3)"}}>Tasks assigned to you by your mentor — submit your work below each task</div>
             </div>
           </div>
-          {myTasks.map((sprint, si) => (
-            <div key={si} style={{marginBottom:20}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                <span className="miccai-week-pill" style={{color:phaseColors[si],borderColor:`${phaseColors[si]}40`,background:`${phaseColors[si]}10`}}>
-                  {sprint.weeks}
-                </span>
-                <span style={{fontSize:14,fontWeight:700,color:"var(--ink)"}}>{sprint.label}</span>
-              </div>
-              <div style={{display:"grid",gap:8,paddingLeft:8,borderLeft:`3px solid ${phaseColors[si]}40`}}>
-                {sprint.myTasks.length > 0 ? sprint.myTasks.map((t,ti) => (
-                  <div key={ti} style={{display:"flex",gap:12,alignItems:"flex-start",padding:"12px 16px",borderRadius:10,background:"#fff",border:"1px solid var(--frost)",boxShadow:"0 1px 4px rgba(91,59,245,.05)"}}>
-                    <div style={{width:28,height:28,borderRadius:8,background:`${phaseColors[si]}15`,color:phaseColors[si],fontSize:12,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      {ti+1}
-                    </div>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13,color:"var(--ink)",lineHeight:1.6}}>{t}</div>
-                      <div style={{marginTop:6,display:"flex",gap:6,flexWrap:"wrap"}}>
-                        <span style={{fontSize:10,fontWeight:600,color:"var(--ink3)",background:"var(--snow)",border:"1px solid var(--frost)",padding:"2px 8px",borderRadius:10}}>{sprint.weeks}</span>
-                        <span style={{fontSize:10,fontWeight:600,color:phaseColors[si],background:`${phaseColors[si]}10`,border:`1px solid ${phaseColors[si]}30`,padding:"2px 8px",borderRadius:10}}>Milestone {si+1}</span>
-                      </div>
-                    </div>
-                  </div>
-                )) : (
-                  <div style={{padding:"12px 16px",borderRadius:10,background:"var(--snow)",border:"1px dashed var(--frost)",color:"var(--ink3)",fontSize:13}}>
-                    No specific tasks assigned for this sprint — support your team as needed.
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+          {loadingTasks ? (
+            <div style={{textAlign:"center",padding:"40px",color:"var(--ink3)",fontSize:13}}>Loading your tasks…</div>
+          ) : (
+            <MemberTaskView user={user} challenge={challenge} tasks={sprintTasks} onTasksChange={setSprintTasks} pushToSheets={pushTaskToSheets} />
+          )}
+        </div>
+      )}
 
-          {/* Key Recommendations for Role */}
-          <div className="miccai-card" style={{padding:20,marginTop:8}}>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:14}}>
-              {isMentor || isAssociate ? "Mentor & Associate Recommended Approaches" : "Recommended Approaches for Team Members"}
+      {/* ── TAB: MANAGE TASKS (Authorized roles only) ── */}
+      {mainTab === "manage" && isAuthorized && (
+        <div className="miccai-fadein">
+          <div style={{padding:"14px 18px",borderRadius:12,background:"#f5f3ff",border:"1px solid #5B3BF530",marginBottom:20,display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:22}}>📋</span>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:"var(--ink)"}}>Task Management — <span style={{color:"var(--violet)"}}>{challenge.name}</span></div>
+              <div style={{fontSize:12,color:"var(--ink3)"}}>Create, assign, and score tasks for each sprint milestone. Members see tasks only after you assign them.</div>
             </div>
-            {(isMentor || isAssociate) ? (
-              <div style={{display:"grid",gap:10}}>
-                {[
-                  ["📋","Technical Architecture Review","Regularly review the team's core architecture decisions — validate that multi-task or multi-modal approaches are well-motivated and aligned with the challenge metric."],
-                  ["🔬","Clinical Validation Mindset","Frame all technical decisions around clinical plausibility — ensure preprocessing, loss functions, and evaluation metrics reflect real-world clinical constraints."],
-                  ["📈","Convergence Monitoring","Monitor training curves bi-weekly; flag any signs of gradient instability, mode collapse, or task dominance in multi-task settings early."],
-                  ["🐳","Docker & Submission Readiness","Plan Docker containerization from Week 5 onward — don't leave it to the last sprint. Validate against the challenge's Codabench/Grand-Challenge specs early."],
-                  ["📝","Paper Draft Parallel Track","Begin drafting the methodology and results sections by Week 5 — a submission paper draft running in parallel with code reduces Week 7–8 pressure."]
-                ].map(([ic,t,d],i) => (
-                  <div key={i} style={{display:"flex",gap:12,padding:"12px 16px",borderRadius:10,background:"var(--snow)",border:"1px solid var(--frost)"}}>
-                    <span style={{fontSize:22,flexShrink:0}}>{ic}</span>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:700,color:"var(--ink)",marginBottom:4}}>{t}</div>
-                      <div style={{fontSize:12,color:"var(--ink2)",lineHeight:1.6}}>{d}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{display:"grid",gap:10}}>
-                {[
-                  ["🔧","Start with Baselines","Don't over-engineer early — get a working baseline in Weeks 1–2, then iterate. A simple 3D UNet that trains is worth more than a complex architecture that doesn't."],
-                  ["📓","Document Everything","Keep a daily experiment log (even just a notebook). Loss curves, dataset sizes, preprocessing steps — these become your paper's methodology section."],
-                  ["🤝","Communicate Blockers Early","If stuck on an implementation, raise it in the daily standup immediately. Don't spend more than 1 day on a single blocker without asking for help."],
-                  ["🐳","Learn Docker Early","Don't wait until Week 7. Practice building a Docker image with your preprocessing + inference pipeline in Week 4–5 to avoid last-minute issues."],
-                  ["🎯","Focus on Challenge Metrics","Understand exactly what the challenge evaluates (Dice, TRE, SSIM, MOTA, etc.) and optimize for those — not general accuracy. Read the challenge evaluation code."]
-                ].map(([ic,t,d],i) => (
-                  <div key={i} style={{display:"flex",gap:12,padding:"12px 16px",borderRadius:10,background:"var(--snow)",border:"1px solid var(--frost)"}}>
-                    <span style={{fontSize:22,flexShrink:0}}>{ic}</span>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:700,color:"var(--ink)",marginBottom:4}}>{t}</div>
-                      <div style={{fontSize:12,color:"var(--ink2)",lineHeight:1.6}}>{d}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
+
+          {/* Sprint selector */}
+          <div style={{display:"flex",alignItems:"center",gap:0,marginBottom:20,background:"#fff",borderRadius:14,border:"1px solid var(--frost)",padding:4,width:"fit-content",flexWrap:"wrap"}}>
+            {challenge.sprints.map((s,i) => (
+              <button key={i} onClick={() => setActiveSprint(i)}
+                style={{padding:"9px 18px",borderRadius:10,border:"none",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,transition:"all .18s",
+                  background:activeSprint===i ? phaseColors[i] : "transparent",
+                  color:activeSprint===i ? "#fff" : "var(--ink3)"}}>
+                {s.weeks}
+              </button>
+            ))}
+          </div>
+
+          {loadingTasks ? (
+            <div style={{textAlign:"center",padding:"40px",color:"var(--ink3)",fontSize:13}}>Loading tasks…</div>
+          ) : (
+            <SprintTaskManager
+              user={user}
+              challenge={challenge}
+              sprintIndex={activeSprint}
+              sprint={challenge.sprints[activeSprint]}
+              tasks={sprintTasks}
+              onTasksChange={setSprintTasks}
+              pushToSheets={pushTaskToSheets}
+            />
+          )}
         </div>
       )}
 
@@ -4340,7 +4683,6 @@ function AppShell() {
         { id:"progress",     icon:"📊", label:"My Progress" },
         { id:"training",     icon:"📚", label:"Training Modules" },
         { id:"research",     icon:"🔬", label:"Research Hub" },
-        { id:"competitions", icon:"🏆", label:"Competitions" },
         { id:"resources",    icon:"⚙️", label:"Request Resources" },
         { id:"calendar",     icon:"📅", label:"Enrichment Calendar" },
         { id:"profile",      icon:"👤", label:"My Profile" },
@@ -4350,7 +4692,6 @@ function AppShell() {
         progress:     <ParticipantProgress user={user}/>,
         training:     <TrainingModules user={user}/>,
         research:     <ResearchHub user={user}/>,
-        competitions: <CompetitionsView user={user}/>,
         resources:    <ResourceRequests user={user}/>,
         calendar:     <EnrichmentCalendar user={user}/>,
       },
