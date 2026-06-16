@@ -799,26 +799,7 @@ const PBar = ({ val, max=100, color="" }) => (
 //  PARTICIPANT VIEWS
 // ─────────────────────────────────────────────
 function ParticipantDashboard({ user }) {
-  return (
-    <div>
-      <div className="banner">
-        <div>
-          <div className="banner-chip">IEEE E-JUST EMBS SBC · Ri-Sō 理創 2026</div>
-          <div className="banner-title">Welcome, {(user.name||"").split(" ")[0] || "Participant"} 👋</div>
-          <div className="banner-sub">Your dashboard will be set up soon by your admin.</div>
-        </div>
-      </div>
-      <div className="card" style={{marginTop:24}}>
-        <div className="card-body" style={{textAlign:"center",padding:"56px 24px"}}>
-          <div style={{fontSize:48,marginBottom:16}}>🚧</div>
-          <div style={{fontSize:17,fontWeight:700,color:"var(--ink)",marginBottom:8}}>Dashboard coming soon</div>
-          <div style={{fontSize:13,color:"var(--ink3)",maxWidth:360,margin:"0 auto",lineHeight:1.7}}>
-            Your dashboard content hasn't been set up yet. Check back later or contact your program admin.
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return <MICCAIChallenges user={user} />;
 }
 
 function _OldParticipantDashboard_UNUSED({ user }) {
@@ -1450,10 +1431,17 @@ function MICCAIChallenges({ user }) {
   const challengeId = (user.challengeId || "").toString().toUpperCase().trim();
   const teamRole = (user.teamRole || "").toString().toLowerCase().trim();
 
+  const isMentor = teamRole === "mentor";
+  const isAssociate = teamRole === "associate_researcher" || teamRole === "associate";
+  const isAdmin = teamRole === "board_admin" || teamRole === "admin";
+  // Only mentors and admins can switch between challenges; members are locked to their own
+  const canSwitchChallenge = isMentor || isAdmin;
+
   const [activeChallenge, setActiveChallenge] = useState(
     MICCAI_CHALLENGES[challengeId] ? challengeId : Object.keys(MICCAI_CHALLENGES)[0]
   );
-  const [mainTab, setMainTab] = useState("overview");
+  // Members default to "mytasks"; mentors/associates default to "overview"
+  const [mainTab, setMainTab] = useState((isMentor || isAssociate || isAdmin) ? "overview" : "mytasks");
   const [activeSprint, setActiveSprint] = useState(0);
   const [expandedTasks, setExpandedTasks] = useState({});
   const [scores, setScores] = useState({ pipeline: 0, architecture: 0, optimization: 0, validation: 0 });
@@ -1461,9 +1449,6 @@ function MICCAIChallenges({ user }) {
 
   const challenge = MICCAI_CHALLENGES[activeChallenge];
 
-  const isMentor = teamRole === "mentor";
-  const isAssociate = teamRole === "associate_researcher" || teamRole === "associate";
-  const isAdmin = teamRole === "board_admin" || teamRole === "admin";
   const userRoleKey = isMentor ? "mentor" : isAssociate ? "associate" : isAdmin ? "board_admin" : teamRole || "TM1";
 
   const totalScore = Math.round(
@@ -1554,20 +1539,25 @@ function MICCAIChallenges({ user }) {
         </div>
       </div>
 
-      {/* Challenge Selector */}
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
-        {Object.values(MICCAI_CHALLENGES).map(c => (
-          <button key={c.id} onClick={() => switchChallenge(c.id)}
-            className="miccai-chip-btn"
-            style={{color:c.color,background:activeChallenge===c.id ? `${c.color}12` : "transparent",borderColor:activeChallenge===c.id ? c.color : "var(--frost)"}}>
-            <span>{c.icon}</span> {c.name}
-          </button>
-        ))}
-      </div>
+      {/* Challenge Selector — only mentors & admins can switch; members are locked to their assigned challenge */}
+      {canSwitchChallenge && (
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
+          {Object.values(MICCAI_CHALLENGES).map(c => (
+            <button key={c.id} onClick={() => switchChallenge(c.id)}
+              className="miccai-chip-btn"
+              style={{color:c.color,background:activeChallenge===c.id ? `${c.color}12` : "transparent",borderColor:activeChallenge===c.id ? c.color : "var(--frost)"}}>
+              <span>{c.icon}</span> {c.name}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* Main Navigation Tabs */}
+      {/* Main Navigation Tabs — members only see their tasks + sprint view; mentors/admins see everything */}
       <div style={{display:"flex",gap:6,background:"var(--snow)",padding:5,borderRadius:12,border:"1px solid var(--frost)",marginBottom:20,flexWrap:"wrap"}}>
-        {[["overview","🎯","Overview"],["sprints","📅","Sprint Plan"],["mytasks","✅","My Tasks"],["assess","📊","Assessment"]].map(([id,ic,lb]) => (
+        {(canSwitchChallenge || isAssociate
+          ? [["overview","🎯","Overview"],["sprints","📅","Sprint Plan"],["mytasks","✅","My Tasks"],["assess","📊","Assessment"]]
+          : [["mytasks","✅","My Tasks"],["sprints","📅","Sprint Plan"]]
+        ).map(([id,ic,lb]) => (
           <button key={id} className={`miccai-tab ${mainTab===id?"active":""}`} onClick={() => setMainTab(id)}>{ic} {lb}</button>
         ))}
       </div>
@@ -1686,9 +1676,9 @@ function MICCAIChallenges({ user }) {
                 </div>
               </div>
 
-              {/* Tasks by Role */}
+              {/* Tasks by Role — members only see their own role; mentors/admins see all */}
               <div style={{display:"grid",gap:10}}>
-                {Object.entries(sprint.tasks).map(([role, tasks]) => {
+                {Object.entries(sprint.tasks).filter(([role]) => canSwitchChallenge || isAssociate || role === userRoleKey).map(([role, tasks]) => {
                   const key = `${si}-${role}`;
                   const isOpen = expandedTasks[key];
                   const rColor = roleColor(role);
@@ -4353,7 +4343,6 @@ function AppShell() {
         { id:"competitions", icon:"🏆", label:"Competitions" },
         { id:"resources",    icon:"⚙️", label:"Request Resources" },
         { id:"calendar",     icon:"📅", label:"Enrichment Calendar" },
-        { id:"challenges",   icon:"🏥", label:"MICCAI Challenges" },
         { id:"profile",      icon:"👤", label:"My Profile" },
       ],
       pages: {
@@ -4364,7 +4353,6 @@ function AppShell() {
         competitions: <CompetitionsView user={user}/>,
         resources:    <ResourceRequests user={user}/>,
         calendar:     <EnrichmentCalendar user={user}/>,
-        challenges:   <MICCAIChallenges user={user}/>,
       },
       defaultPage: "dashboard",
     },
