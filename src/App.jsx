@@ -995,6 +995,904 @@ function ParticipantProgress({ user }) {
   );
 }
 
+// ─────────────────────────────────────────────
+//  MICCAI 2026 CHALLENGE DATA
+// ─────────────────────────────────────────────
+const MICCAI_CHALLENGES = {
+  AMPLIFAI: {
+    id: "AMPLIFAI",
+    name: "AMPLIFAI",
+    fullName: "AMPLIFAI — Multi-Phase Liver Imaging",
+    theme: "Automated Hepatocellular Carcinoma (HCC) characterization using clinical LI-RADS categories",
+    color: "#E53E5C",
+    colorLight: "#fff0f3",
+    icon: "🫀",
+    dataset: "Harmonized multi-phase liver CT (668 cases: 83 normal, 585 HCC). Four contrast phases: non-contrast, arterial, portal venous, delayed.",
+    tasks: [
+      "Voxel-level segmentation of non-rim APHE, non-peripheral washout, and enhancing capsules",
+      "Ordinal classification of lesions into LI-RADS categories (LR-1 to LR-5)"
+    ],
+    architecture: "[Phase Co-registration] → [Spatio-Temporal Fusion Network] → [Multi-Task Head: Segmentation Mask + Ordinal LR Classification]",
+    sprints: [
+      {
+        weeks: "Weeks 1–2", label: "Data Realignment & Spatial Synchronization", phase: 1,
+        tasks: {
+          mentor: ["Review alignment accuracy across all 4 phases", "Approve data preprocessing strategy", "Ensure clinical data integrity throughout pipeline"],
+          associate: ["Assist with NIfTI format verification", "Document co-registration accuracy metrics", "Set up experiment tracking (MLflow/W&B)"],
+          TM1: ["Build 4-phase NIfTI co-registration pipeline using rigid/deformable registration (ANTs/SimpleITK) to align non-contrast, arterial, portal venous, and delayed phases spatially"],
+          TM2: ["Set up 3D UNet or Swin UNETR multi-input baseline architecture"],
+          TM3: ["Implement balanced data loader addressing high ratio of HCC to normal cases"],
+          TM4: ["Establish evaluation harness measuring Dice scores for multi-class segmentation targets"],
+          TM5: ["Support TM1 in phase co-registration validation", "Verify NIfTI file integrity across 668 cases"],
+          TM6: ["Support TM2 in baseline model setup", "Research and document Swin UNETR architecture papers"],
+          TM7: ["Support TM3 in data loading and class imbalance strategies", "Literature review on HCC class distribution"],
+          TM8: ["Support TM4 in evaluation metric implementation", "Prepare data split (train/val/test) documentation"],
+          board_admin: ["Set up team repository and project management board", "Schedule weekly standups and milestone reviews", "Track task completion and send progress reports to program admins"]
+        }
+      },
+      {
+        weeks: "Weeks 3–4", label: "Spatio-Temporal Feature Fusion", phase: 2,
+        tasks: {
+          mentor: ["Audit multi-task loss weight balance to ensure gradients aren't dominated by segmentation", "Review cross-phase attention mechanism design", "Clinical validation of feature fusion approach"],
+          associate: ["Run baseline model experiments and log results", "Compare multi-phase fusion strategies in literature", "Prepare mid-sprint progress report"],
+          TM1: ["Implement spatial ROI cropping focused on liver regions to reduce GPU memory strain"],
+          TM2: ["Engineer cross-phase attention mechanisms or 3D CNN architectures capturing dynamic contrast enhancement over time (APHE and washout)"],
+          TM3: ["Build multi-task loss function combining Dice + Cross-Entropy (segmentation) with Ordinal Cross-Entropy (LI-RADS classification)"],
+          TM4: ["Set up tracking pipelines for validation metrics across both classification and segmentation tasks"],
+          TM5: ["Assist TM1 with liver ROI cropping implementation and testing"],
+          TM6: ["Assist TM2 with attention mechanism literature review and implementation support"],
+          TM7: ["Assist TM3 with loss function tuning experiments"],
+          TM8: ["Assist TM4 with metric dashboard setup and visualization"],
+          board_admin: ["Compile Week 3–4 sprint report", "Coordinate with mentor on timeline adjustments", "Ensure GPU resource requests are submitted"]
+        }
+      },
+      {
+        weeks: "Weeks 5–6", label: "Domain Generalization Tuning", phase: 3,
+        tasks: {
+          mentor: ["Perform clinical error analysis on misclassified validation cases (e.g., LR-3 vs LR-4 edge cases)", "Review domain generalization strategy", "Sign off on ablation study design"],
+          associate: ["Run ablation experiments with phase inclusion/exclusion", "Analyze inter-center performance gaps", "Document findings for paper draft"],
+          TM1: ["Inject heavy domain augmentations (contrast, intensity scaling, blur) to simulate multi-center protocol heterogeneity"],
+          TM2: ["Refine classification head to enforce strict ordinal constraints between LR-1 to LR-5 categories"],
+          TM3: ["Run ablation studies on phase inclusion (verifying model reliance on arterial vs. delayed phases)"],
+          TM4: ["Evaluate performance consistency across the four contributing public source datasets"],
+          TM5: ["Support TM1 with augmentation pipeline testing and validation"],
+          TM6: ["Support TM2 with ordinal constraint implementation"],
+          TM7: ["Support TM3 with ablation study execution and documentation"],
+          TM8: ["Support TM4 with cross-dataset evaluation scripts"],
+          board_admin: ["Update milestone tracker", "Prepare Weeks 5–6 progress report for admins", "Coordinate with associates on paper draft timeline"]
+        }
+      },
+      {
+        weeks: "Weeks 7–8", label: "Validation & Robust Inference", phase: 4,
+        tasks: {
+          mentor: ["Conduct final validation checks against simulated held-out data", "Assess domain generalizability of final model", "Sign off on Docker container and submission"],
+          associate: ["Write challenge submission report", "Prepare paper draft sections on methodology and results", "Coordinate final Docker testing"],
+          TM1: ["Develop multi-model ensemble to stabilize predictions (with TM2)"],
+          TM2: ["Co-develop ensemble with TM1; run inference optimizations (TensorRT or mixed precision)"],
+          TM3: ["Run inference speed optimizations to ensure processing completes within challenge limits"],
+          TM4: ["Package entire multi-task pipeline into Docker container meeting Codabench specifications"],
+          TM5: ["Assist TM1/TM2 with ensemble strategy evaluation"],
+          TM6: ["Run final model benchmarks and document results table"],
+          TM7: ["Assist TM3 with speed profiling and optimization"],
+          TM8: ["Assist TM4 with Docker container testing and Codabench submission"],
+          board_admin: ["Coordinate final submission checklist", "Submit to Codabench platform", "File final sprint report and prepare celebration event"]
+        }
+      }
+    ],
+    assessment: [
+      { role: "Mentor", metric: "Clinical Alignment & Structural Oversight", criteria: "Zero training deadlocks; multi-task loss architecture converges within 4 weeks; clinical logic holds across tasks" },
+      { role: "TM1", metric: "Registration Precision & Processing Latency", criteria: "Sub-voxel phase-to-phase registration alignment; preprocessing pipelines cause zero training bottlenecks" },
+      { role: "TM2", metric: "Architecture Innovation & Feature Maps", criteria: "Successful multi-phase attention tensor fusion; model captures distinct APHE and washout dynamics" },
+      { role: "TM3", metric: "Model Convergence & Loss Tuning", criteria: "Validation loss steadily decreases without overfitting; stable multi-task training progression" },
+      { role: "TM4", metric: "Metric Accuracy & Container Compliance", criteria: "Code reaches ≥95% completion rate; Docker containers validate successfully on Codabench" }
+    ]
+  },
+  ENDOVIS: {
+    id: "ENDOVIS",
+    name: "EndoVis 2026",
+    fullName: "EndoVis 2026 — Endoscopic Vision Challenge",
+    theme: "Surgical Data Science (SDS) for context-aware perception and surgical quality assessment",
+    color: "#5B3BF5",
+    colorLight: "#f5f3ff",
+    icon: "🔭",
+    dataset: "Multi-Endoscope and Surgical Video datasets (laparoscopy, colonoscopy, infrared tracking). Real-time STIR tracking + novel view synthesis.",
+    tasks: [
+      "Real-time surgical tissue tracking using infrared markers (STIR)",
+      "Multi-endoscope novel view synthesis and anatomical localization"
+    ],
+    architecture: "[Surgical Video Frames] → [Temporal Feature Extractor (Transformer/LSTM)] → [Dual Head: Real-time Tissue Tracking + Novel View Synthesis (NeRF/3DGS)]",
+    sprints: [
+      {
+        weeks: "Weeks 1–2", label: "Video Pipeline Initialization & Baseline", phase: 1,
+        tasks: {
+          mentor: ["Validate that frame preprocessing handles artifacts like smoke and sudden lens occlusion", "Review baseline tracking framework selection", "Clinical review of surgical workflow assumptions"],
+          associate: ["Benchmark optical flow vs SuperPoint+LightGlue tracking accuracy", "Set up video dataset access and frame extraction pipeline", "Document baseline MOTA scores"],
+          TM1: ["Develop video frame extraction, illumination correction, and specular reflection removal pipelines"],
+          TM2: ["Implement baseline real-time object tracking or feature matching framework (Optical Flow / SuperPoint + LightGlue)"],
+          TM3: ["Implement specialized loss function optimized for tracking coordinates and spatial mapping"],
+          TM4: ["Build validation scripts calculating Multi-Object Tracking Accuracy (MOTA) and structural metrics"],
+          TM5: ["Support TM1 with video preprocessing pipeline testing across all endoscope types"],
+          TM6: ["Support TM2 with feature matching baseline evaluation"],
+          TM7: ["Support TM3 with loss function literature review"],
+          TM8: ["Support TM4 with MOTA metric calculation and visualization"],
+          board_admin: ["Set up team repo and Kanban board", "Schedule weekly review sessions", "Submit initial resource requests for GPU access"]
+        }
+      },
+      {
+        weeks: "Weeks 3–4", label: "Temporal & Novel View Modeling", phase: 2,
+        tasks: {
+          mentor: ["Verify that architectural design supports target real-time FPS processing constraints", "Review temporal model selection rationale", "Check camera calibration approach"],
+          associate: ["Integrate Timesformer or 3DGS baseline implementation", "Run temporal consistency benchmarks", "Prepare mid-sprint technical report"],
+          TM1: ["Sequence frame segments into temporal blocks, ensuring synchronicity with infrared markers"],
+          TM2: ["Integrate transformer-based temporal models (Timesformer) for tissue tracking, or implement 3D Gaussian Splatting for novel view synthesis"],
+          TM3: ["Optimize multi-endoscope perspective projection matrices and camera intrinsic calibrations"],
+          TM4: ["Evaluate frame-to-frame tracking stability across highly deformable soft tissue sequences"],
+          TM5: ["Assist TM1 with temporal block sequencing and synchronization testing"],
+          TM6: ["Assist TM2 with 3DGS implementation and rendering evaluation"],
+          TM7: ["Assist TM3 with camera calibration optimization"],
+          TM8: ["Assist TM4 with deformable tissue tracking evaluation scripts"],
+          board_admin: ["Compile Week 3–4 sprint report", "Coordinate with mentor on FPS benchmark timeline", "Ensure compute resources are allocated for 3DGS training"]
+        }
+      },
+      {
+        weeks: "Weeks 5–6", label: "Robustness to Occlusion & Deformations", phase: 3,
+        tasks: {
+          mentor: ["Benchmark system tracking re-localization capability following complete target occlusion", "Review robustness test design", "Validate occlusion simulation realism"],
+          associate: ["Run comprehensive occlusion and deformation stress tests", "Analyze tracking failure modes", "Document results for paper methodology section"],
+          TM1: ["Design custom augmentations simulating tool occlusions, motion blur, and blood pooling"],
+          TM2: ["Integrate temporal memory cells or Kalman filters to preserve tracking continuity during deep tool occlusions"],
+          TM3: ["Fine-tune view synthesis rendering pipelines to reduce blur and spatial artifacts"],
+          TM4: ["Run comprehensive inference speed tests on target hardware setups"],
+          TM5: ["Assist TM1 with augmentation diversity and realism testing"],
+          TM6: ["Assist TM2 with Kalman filter integration and tuning"],
+          TM7: ["Assist TM3 with rendering artifact analysis"],
+          TM8: ["Assist TM4 with hardware benchmarking across GPU profiles"],
+          board_admin: ["Update milestone tracker with Week 5–6 results", "Prepare progress report for program admin", "Coordinate with associates on paper draft sections"]
+        }
+      },
+      {
+        weeks: "Weeks 7–8", label: "Final System Deployment", phase: 4,
+        tasks: {
+          mentor: ["Confirm tracking consistency and geometric fidelity across diverse camera perspectives", "Final sign-off on system latency and accuracy", "Review Docker submission"],
+          associate: ["Finalize challenge submission paper", "Write results and discussion sections", "Coordinate final Docker testing and submission"],
+          TM1: ["Construct temporal ensemble setups using sliding window inference strategies (with TM2)"],
+          TM2: ["Co-develop sliding window ensemble with TM1"],
+          TM3: ["Optimize memory allocation to prevent OOM errors during long video sequences"],
+          TM4: ["Finalize low-latency inference configurations and build deployment-ready Docker structures"],
+          TM5: ["Assist with ensemble evaluation and comparison"],
+          TM6: ["Run final FPS benchmarks and document results"],
+          TM7: ["Assist TM3 with memory profiling and optimization"],
+          TM8: ["Assist TM4 with Docker testing on target hardware"],
+          board_admin: ["Submit to challenge platform", "File final sprint report", "Organize team debrief session"]
+        }
+      }
+    ],
+    assessment: [
+      { role: "Mentor", metric: "Real-time Viability & Algorithmic Safety", criteria: "Tracking maintains frame rate goals without losing target during rapid instrument adjustments" },
+      { role: "TM1", metric: "Artifact Suppression & Preprocessing Speed", criteria: "High specular reflection removal rates with negligible frame-processing latency" },
+      { role: "TM2", metric: "Temporal Consistency & Spatial Novelty", criteria: "Tracking drift minimal over 1000+ frames; synthesized views resolve fine tissue textures clearly" },
+      { role: "TM3", metric: "Calibration Precision & Optimization Bounds", criteria: "Camera pose estimation error minimized; loss curves decrease consistently across dynamic deformations" },
+      { role: "TM4", metric: "Processing Throughput (FPS) & System Packaging", criteria: "System maintains target FPS; Docker container passes all pipeline tests" }
+    ]
+  },
+  LEARN2REG: {
+    id: "LEARN2REG",
+    name: "Learn2Reg 2026",
+    fullName: "Learn2Reg 2026 — Learn2Breath / PSMAReg",
+    theme: "Clinically relevant deformable image registration for large, non-linear anatomical shifts",
+    color: "#0EA5C5",
+    colorLight: "#f0fafd",
+    icon: "🫁",
+    dataset: "Learn2Breath: Paired inspiratory/expiratory chest CT. PSMAReg: Longitudinal whole-body PSMA PET/CT scans.",
+    tasks: [
+      "Estimate clinically plausible deformable displacement fields (U) aligning moving scans to fixed baselines",
+      "Maintain structural accuracy and intensity metric preservation post-registration"
+    ],
+    architecture: "[Fixed & Moving Scans] → [Deformable Registration Network] → [Displacement Field (U)] → [Jacobian Determinant Check]",
+    sprints: [
+      {
+        weeks: "Weeks 1–2", label: "Voxel Space Alignment & Baseline", phase: 1,
+        tasks: {
+          mentor: ["Ensure inspiratory scan is strictly designated as fixed reference space across all pipelines", "Review affine pre-alignment strategy", "Validate intensity normalization approach for BMI/radiation variances"],
+          associate: ["Set up Voxelmorph or Elastix baseline registration framework", "Benchmark initial TRE with landmark annotations", "Document registration baseline metrics"],
+          TM1: ["Implement spatial affine pre-alignment routines and intensity normalization strategies adjusted for BMI/radiation variances"],
+          TM2: ["Deploy unsupervised baseline registration framework (Voxelmorph or conventional Elastix)"],
+          TM3: ["Formulate initial image similarity components (NCC for CT, Mutual Information for PET/CT)"],
+          TM4: ["Develop validation utilities measuring Target Registration Error (TRE) using anatomical landmarks"],
+          TM5: ["Support TM1 with affine alignment pipeline testing"],
+          TM6: ["Support TM2 with Voxelmorph baseline configuration"],
+          TM7: ["Support TM3 with similarity metric implementation and comparison"],
+          TM8: ["Support TM4 with TRE calculation validation scripts"],
+          board_admin: ["Set up team repository and project board", "Schedule weekly check-ins", "Submit GPU resource requests for registration training"]
+        }
+      },
+      {
+        weeks: "Weeks 3–4", label: "Deformable Field Optimization", phase: 2,
+        tasks: {
+          mentor: ["Inspect deformation fields to verify structural plausibility and rule out topological folding artifacts", "Review multi-scale architecture design", "Approve Jacobian regularization approach"],
+          associate: ["Run deformable registration experiments across large lung volume changes", "Evaluate Dice overlap on anatomical segmentations", "Prepare mid-sprint technical report"],
+          TM1: ["Build coordinate grid generation tools and transformation warp modules"],
+          TM2: ["Design multi-scale or cascade DL architecture to capture large non-linear transformations (diaphragm movement, lung volume differences)"],
+          TM3: ["Integrate Jacobian determinant regularization (det(∇U) > 0) into loss function to prevent foldings"],
+          TM4: ["Evaluate Dice overlap on transformed anatomical segmentations"],
+          TM5: ["Assist TM1 with warp module testing and grid generation"],
+          TM6: ["Assist TM2 with cascade architecture experimentation"],
+          TM7: ["Assist TM3 with Jacobian regularization tuning"],
+          TM8: ["Assist TM4 with Dice evaluation scripts across anatomical structures"],
+          board_admin: ["Compile Week 3–4 sprint report", "Coordinate compute scheduling for cascade network training", "Prepare resource usage report"]
+        }
+      },
+      {
+        weeks: "Weeks 5–6", label: "Multimodal & Multi-Center Generalization", phase: 3,
+        tasks: {
+          mentor: ["Confirm quantitative PET values are preserved post-transformation for therapy response monitoring", "Review multi-center generalization strategy", "Validate SUV preservation approach"],
+          associate: ["Run intensity-transformation experiments simulating varied scanner types", "Validate robustness across large lung volume changes (≥2L)", "Document findings for paper draft"],
+          TM1: ["Apply intensity transformations to simulate differences across varied scanner types and radiation settings"],
+          TM2: ["Adapt network to isolate and preserve quantitative SUV indices in PET data during warping"],
+          TM3: ["Fine-tune regularization hyperparameters to balance alignment accuracy against deformation smoothness"],
+          TM4: ["Validate system robustness across large lung volume changes (≥2L)"],
+          TM5: ["Assist TM1 with scanner simulation augmentation pipeline"],
+          TM6: ["Assist TM2 with SUV preservation validation"],
+          TM7: ["Assist TM3 with regularization hyperparameter sweep"],
+          TM8: ["Assist TM4 with large lung volume change evaluation"],
+          board_admin: ["Update milestone tracker", "Prepare progress report for program admin", "Coordinate with associates on paper section drafting"]
+        }
+      },
+      {
+        weeks: "Weeks 7–8", label: "Validation & Docker Integration", phase: 4,
+        tasks: {
+          mentor: ["Perform final technical review of TRE and deformation field smoothness profiles", "Sign off on Docker container submission", "Final clinical plausibility review"],
+          associate: ["Write challenge submission and paper draft", "Coordinate final Docker testing", "Submit to Codabench platform"],
+          TM1: ["Deploy multi-resolution or instance-specific optimization techniques for fine structural alignment (with TM2)"],
+          TM2: ["Co-develop instance optimization with TM1; finalize ensemble strategy"],
+          TM3: ["Profile code execution speeds to minimize total processing time per scan pair"],
+          TM4: ["Integrate validation metric tracking and build evaluation Docker container matching Codabench standards"],
+          TM5: ["Assist with final optimization evaluation"],
+          TM6: ["Run final TRE benchmarks and document results table"],
+          TM7: ["Assist TM3 with execution speed profiling"],
+          TM8: ["Assist TM4 with Codabench Docker container validation"],
+          board_admin: ["Submit final Docker container", "File sprint completion report", "Organize team retrospective session"]
+        }
+      }
+    ],
+    assessment: [
+      { role: "Mentor", metric: "Biomechanical Plausibility Review", criteria: "Zero negative Jacobian determinants; registration preserves realistic physical lung boundaries" },
+      { role: "TM1", metric: "Affine Initialization Error Rates", criteria: "Pre-alignment reduces initial structural offset by ≥50% prior to deformable steps" },
+      { role: "TM2", metric: "Transformation Accuracy Index", criteria: "TRE meets target limits; Dice scores improve across structures post-registration" },
+      { role: "TM3", metric: "Field Regularization Balance", criteria: "Minimization of folding artifacts; regularized loss components converge smoothly" },
+      { role: "TM4", metric: "Processing Latency & Container Compliance", criteria: "Code executes within clinical time limits; container validates perfectly on Codabench" }
+    ]
+  },
+  MRIXFIELDS: {
+    id: "MRIXFIELDS",
+    name: "MRIxFields2026",
+    fullName: "MRIxFields2026 — Cross-Field MRI Translation",
+    theme: "Cross-Field MRI translation and field-aware contrast harmonization",
+    color: "#E8860A",
+    colorLight: "#fff8f0",
+    icon: "🧲",
+    dataset: "~500 retrospective + 200 prospective paired cross-field brain scans (0.1T to 7T). Sequence types: T1w, T2w, T2-FLAIR.",
+    tasks: [
+      "Reconstruct high-field equivalent structural scans from ultra-low-field inputs",
+      "Develop unified, controllable field-to-field conditional synthesis framework"
+    ],
+    architecture: "[Low Field Scan (0.1T)] + [Target Field Condition (7T)] → [Conditional Generative Model] → [Harmonized High-Field Volume]",
+    sprints: [
+      {
+        weeks: "Weeks 1–2", label: "Matrix Normalization & Diffusion/GAN Baselines", phase: 1,
+        tasks: {
+          mentor: ["Ensure intensity scaling methods adequately preserve structural features across differing field strengths", "Review paired dataset co-registration strategy", "Clinical review of T1w/T2w/FLAIR baseline quality"],
+          associate: ["Set up Pix2PixHD or latent diffusion baseline model", "Benchmark nRMSE/SSIM on paired data", "Document baseline image quality scores"],
+          TM1: ["Implement voxel-resampling, intensity normalization, and rigid co-registration for multi-field paired datasets"],
+          TM2: ["Set up standard conditional generative baseline (Pix2PixHD or latent diffusion model)"],
+          TM3: ["Configure standard pixel-level reconstruction and structural similarity loss functions (L1 + SSIM)"],
+          TM4: ["Create evaluation suite tracking nRMSE, SSIM, and LPIPS scores"],
+          TM5: ["Support TM1 with voxel resampling pipeline testing across field strengths"],
+          TM6: ["Support TM2 with baseline GAN/diffusion model setup"],
+          TM7: ["Support TM3 with loss function implementation and validation"],
+          TM8: ["Support TM4 with multi-metric evaluation harness"],
+          board_admin: ["Set up team repository and project board", "Schedule weekly sync with mentor", "Submit GPU resource requests for GAN training"]
+        }
+      },
+      {
+        weeks: "Weeks 3–4", label: "Controllable Field-Conditioning", phase: 2,
+        tasks: {
+          mentor: ["Verify model responds accurately to conditional field inputs without structural hallucinations", "Review AdaIN/cross-attention injection approach", "Validate field strength conditioning logic"],
+          associate: ["Test conditional synthesis across all field transition increments", "Compare AdaIN vs cross-attention field injection", "Prepare mid-sprint report"],
+          TM1: ["Build vector embedding modules to explicitly handle magnetic field strength parameters (0.1T, 1.5T, 3T, 7T)"],
+          TM2: ["Integrate cross-attention mechanisms or AdaIN to inject field-strength conditions into generative network"],
+          TM3: ["Incorporate perceptual loss (LPIPS) and adversarial loss to recover fine tissue details"],
+          TM4: ["Measure synthesis quality trends across varying field transition increments"],
+          TM5: ["Assist TM1 with field embedding module testing"],
+          TM6: ["Assist TM2 with conditional injection mechanism evaluation"],
+          TM7: ["Assist TM3 with GAN loss balancing and training stability"],
+          TM8: ["Assist TM4 with synthesis quality trend visualization"],
+          board_admin: ["Compile Week 3–4 sprint report", "Coordinate compute time for GAN training runs", "Ensure all team members have dataset access"]
+        }
+      },
+      {
+        weeks: "Weeks 5–6", label: "Anatomical Fidelity & Artifact Control", phase: 3,
+        tasks: {
+          mentor: ["Audit synthesized deep gray matter regions to ensure anatomical boundaries match target reference scans", "Review anatomical constraint network design", "Validate B0/B1 artifact simulation realism"],
+          associate: ["Run Dice overlap tracking across 14 bilateral deep gray matter nuclei", "Analyze hallucination failure modes", "Document results for paper draft"],
+          TM1: ["Apply targeted data augmentations to simulate realistic field artifacts (B0/B1 inhomogeneities and field noise)"],
+          TM2: ["Implement secondary anatomical constraint network (pre-trained segmentation) to protect deep gray matter structures"],
+          TM3: ["Integrate structural preservation terms into primary optimization objectives"],
+          TM4: ["Track Dice overlap and volume consistency across 14 bilateral deep gray matter nuclei"],
+          TM5: ["Assist TM1 with artifact simulation augmentation pipeline"],
+          TM6: ["Assist TM2 with anatomical constraint network integration"],
+          TM7: ["Assist TM3 with structural preservation loss tuning"],
+          TM8: ["Assist TM4 with deep gray matter evaluation scripts"],
+          board_admin: ["Update milestone tracker", "Prepare Weeks 5–6 progress report", "Coordinate with associates on paper methodology section"]
+        }
+      },
+      {
+        weeks: "Weeks 7–8", label: "Ensembling & Docker Deployment", phase: 4,
+        tasks: {
+          mentor: ["Sign off on final model structural fidelity, image quality metrics, and freedom from hallucinations", "Final review of all 5 challenge metrics", "Approve Synapse Docker submission"],
+          associate: ["Write challenge submission paper", "Coordinate final Docker testing on Synapse", "Submit to challenge platform"],
+          TM1: ["Deploy ensembling methods over multiple training checkpoints to reduce high-frequency reconstruction artifacts (with TM2)"],
+          TM2: ["Co-develop checkpoint ensemble with TM1"],
+          TM3: ["Apply model quantization or mixed-precision optimization for faster generation"],
+          TM4: ["Run comprehensive validation across all 5 required challenge metrics; package into Synapse-compliant Docker container"],
+          TM5: ["Assist with checkpoint ensemble evaluation"],
+          TM6: ["Run final SSIM/LPIPS/nRMSE benchmarks and document results"],
+          TM7: ["Assist TM3 with quantization and mixed-precision testing"],
+          TM8: ["Assist TM4 with Synapse container compliance testing"],
+          board_admin: ["Submit to Synapse challenge platform", "File final sprint report", "Plan team debrief and next steps"]
+        }
+      }
+    ],
+    assessment: [
+      { role: "Mentor", metric: "Hallucination Audit & Validation Review", criteria: "Structural anatomy matches reference records; generated contrast scales cleanly with input conditions" },
+      { role: "TM1", metric: "Cross-Field Co-registration Precision", criteria: "Spatial alignment errors between paired scans remain sub-voxel before processing steps" },
+      { role: "TM2", metric: "Generative Fidelity & Visual Realism", criteria: "SSIM and LPIPS metrics hit target criteria; synthesized tissue boundaries remain sharp" },
+      { role: "TM3", metric: "Loss Stability & Convergence Profile", criteria: "GAN/Diffusion training loops converge smoothly without mode collapse or gradient instability" },
+      { role: "TM4", metric: "Multi-Metric Ranking Score", criteria: "Output achieves balanced performance rankings across all 5 target evaluation metrics" }
+    ]
+  },
+  AUTOPET: {
+    id: "AUTOPET",
+    name: "autoPET V",
+    fullName: "autoPET V — Interactive Lesion Segmentation",
+    theme: "Interactive, clinician-in-the-loop tumor and lesion segmentation in whole-body PET/CT scans",
+    color: "#0F9F6E",
+    colorLight: "#f0fdf8",
+    icon: "🩺",
+    dataset: "Multi-center whole-body PET/CT cohort with QIBA-aligned SUV normalization and interactive corrective scribbles.",
+    tasks: [
+      "Develop interactive segmentation framework that refines whole-body lesion segmentations based on expert corrective inputs",
+      "Support simulated or real clinician scribbles (clicks/masks) for iterative mask refinement"
+    ],
+    architecture: "[PET/CT Volume] + [Corrective Scribbles] → [Interactive Segmentation Model] → [Refined Target Mask] ↑← [Iterative Feedback Loop]",
+    sprints: [
+      {
+        weeks: "Weeks 1–2", label: "Interactive Pipeline & Baseline Setup", phase: 1,
+        tasks: {
+          mentor: ["Validate correctness of interactive scribble generation logic relative to realistic clinical workflows", "Review SUV normalization strategy", "Ensure baseline interactive segmentation architecture is clinically appropriate"],
+          associate: ["Set up interactive 3D UNet or medical SAM baseline", "Test scribble simulation engine with synthetic prompts", "Benchmark initial Dice and FP/FN volumes"],
+          TM1: ["Implement QIBA-aligned SUV normalization and multi-modal PET/CT spatial concatenation pipelines"],
+          TM2: ["Deploy baseline interactive segmentation architecture (interactive 3D UNet or medical SAM variant)"],
+          TM3: ["Program scribble simulation engine converting false positive/negative errors into synthetic point/line prompts"],
+          TM4: ["Set up tracking infrastructure monitoring initial Dice scores alongside False Positive/Negative Volume metrics"],
+          TM5: ["Support TM1 with QIBA SUV normalization testing and validation"],
+          TM6: ["Support TM2 with interactive baseline model configuration"],
+          TM7: ["Support TM3 with scribble simulation engine testing"],
+          TM8: ["Support TM4 with interactive evaluation metric harness"],
+          board_admin: ["Set up team repo and project board", "Schedule weekly standups", "Submit GPU resource requests for whole-body PET/CT training"]
+        }
+      },
+      {
+        weeks: "Weeks 3–4", label: "Iterative Feedback Architecture", phase: 2,
+        tasks: {
+          mentor: ["Confirm model updates remain localized to targeted areas without degrading distant correct regions", "Review memory-guided module design", "Validate iterative feedback convergence behavior"],
+          associate: ["Benchmark iterative update efficiency (Dice improvement per scribble)", "Compare memory-guided vs stateless approaches", "Prepare mid-sprint report"],
+          TM1: ["Build data loading components managing multi-channel inputs (PET, CT, interaction masks) over consecutive training steps"],
+          TM2: ["Engineer memory-guided neural network modules accepting iterative click updates without losing existing correct boundaries"],
+          TM3: ["Formulate optimization function scoring both absolute segmentation accuracy and improvement rates per interaction step"],
+          TM4: ["Benchmark how rapidly the model updates and converges given variable scribble sequences"],
+          TM5: ["Assist TM1 with multi-channel data loader testing and memory efficiency"],
+          TM6: ["Assist TM2 with memory-guided module implementation"],
+          TM7: ["Assist TM3 with interactive loss function tuning"],
+          TM8: ["Assist TM4 with convergence benchmarking scripts"],
+          board_admin: ["Compile Week 3–4 sprint report", "Coordinate compute for iterative training runs", "Track team progress against 8-week timeline"]
+        }
+      },
+      {
+        weeks: "Weeks 5–6", label: "Physiological Uptake & False Positive Mitigation", phase: 3,
+        tasks: {
+          mentor: ["Assess model behavior against edge cases: low-uptake lesions vs background noise", "Review physiological uptake region isolation strategy", "Validate false positive penalty approach"],
+          associate: ["Run segmentation evaluation on lesion-free control scans", "Analyze false positive distribution across anatomical regions", "Document findings for paper draft"],
+          TM1: ["Isolate features from regions of normal physiological tracer absorption (brain, bladder, kidneys) to reduce false positives"],
+          TM2: ["Implement architectural enhancements to differentiate true lesions from normal metabolic activity under scribble guidance"],
+          TM3: ["Introduce specialized loss weighting to penalize persistent false positive volumes in normal tissues"],
+          TM4: ["Evaluate segmentation metrics on lesion-free control scans"],
+          TM5: ["Assist TM1 with physiological region feature isolation"],
+          TM6: ["Assist TM2 with metabolic activity differentiation implementation"],
+          TM7: ["Assist TM3 with false positive penalty loss tuning"],
+          TM8: ["Assist TM4 with control scan evaluation scripts"],
+          board_admin: ["Update milestone tracker", "Prepare Weeks 5–6 progress report", "Coordinate with associates on paper methodology section"]
+        }
+      },
+      {
+        weeks: "Weeks 7–8", label: "Evaluation & Interactive Containerization", phase: 4,
+        tasks: {
+          mentor: ["Validate complete system using manual interactive testing for real clinician workflow alignment", "Sign off on Docker interactive container", "Final clinical usability review"],
+          associate: ["Write challenge submission paper", "Coordinate Grand-Challenge Docker testing", "Submit to challenge platform"],
+          TM1: ["Fine-tune interaction loops to maximize metric improvement with minimal user corrective inputs (with TM2)"],
+          TM2: ["Co-optimize interaction loops with TM1"],
+          TM3: ["Verify inference cycles execute fast enough to support real-time user interactions"],
+          TM4: ["Package interactive segmentation pipeline into Docker container handling automated iterative testing on Grand-Challenge/Codabench"],
+          TM5: ["Assist with interaction loop optimization evaluation"],
+          TM6: ["Run final Dice/FP/FN benchmarks and document results"],
+          TM7: ["Assist TM3 with inference speed profiling and optimization"],
+          TM8: ["Assist TM4 with Grand-Challenge Docker automated testing"],
+          board_admin: ["Submit to Grand-Challenge platform", "File final sprint report", "Organize team debrief and celebration"]
+        }
+      }
+    ],
+    assessment: [
+      { role: "Mentor", metric: "Clinical Workflow Usability Review", criteria: "System refines masks logically according to user input; interaction behavior remains stable" },
+      { role: "TM1", metric: "SUV Normalization & Prompt Latency", criteria: "SUV values scale consistently across sites; interactive prompt parsing incurs zero visible lag" },
+      { role: "TM2", metric: "Iterative Update Efficiency Index", criteria: "Dice accuracy improves consistently with each added interaction prompt" },
+      { role: "TM3", metric: "False Positive Volume Metrics", criteria: "Continuous reduction in false positive clusters within normal anatomical structures" },
+      { role: "TM4", metric: "Container Evaluation Compliance", criteria: "Interactive execution loops pass Grand-Challenge automated verification protocols" }
+    ]
+  }
+};
+
+const SCORING_WEIGHTS = { pipeline: 0.20, architecture: 0.30, optimization: 0.25, validation: 0.25 };
+
+// ─────────────────────────────────────────────
+//  MICCAI CHALLENGES PAGE COMPONENT
+// ─────────────────────────────────────────────
+function MICCAIChallenges({ user }) {
+  const challengeId = (user.challengeId || "").toString().toUpperCase().trim();
+  const teamRole = (user.teamRole || "").toString().toLowerCase().trim();
+
+  const [activeChallenge, setActiveChallenge] = useState(
+    MICCAI_CHALLENGES[challengeId] ? challengeId : Object.keys(MICCAI_CHALLENGES)[0]
+  );
+  const [mainTab, setMainTab] = useState("overview");
+  const [activeSprint, setActiveSprint] = useState(0);
+  const [expandedTasks, setExpandedTasks] = useState({});
+  const [scores, setScores] = useState({ pipeline: 0, architecture: 0, optimization: 0, validation: 0 });
+  const [animIn, setAnimIn] = useState(true);
+
+  const challenge = MICCAI_CHALLENGES[activeChallenge];
+
+  const isMentor = teamRole === "mentor";
+  const isAssociate = teamRole === "associate_researcher" || teamRole === "associate";
+  const isAdmin = teamRole === "board_admin" || teamRole === "admin";
+  const userRoleKey = isMentor ? "mentor" : isAssociate ? "associate" : isAdmin ? "board_admin" : teamRole || "TM1";
+
+  const totalScore = Math.round(
+    scores.pipeline * SCORING_WEIGHTS.pipeline * 5 +
+    scores.architecture * SCORING_WEIGHTS.architecture * 5 +
+    scores.optimization * SCORING_WEIGHTS.optimization * 5 +
+    scores.validation * SCORING_WEIGHTS.validation * 5
+  );
+
+  const switchChallenge = (id) => {
+    setAnimIn(false);
+    setTimeout(() => { setActiveChallenge(id); setActiveSprint(0); setExpandedTasks({}); setAnimIn(true); }, 220);
+  };
+
+  const toggleTask = (key) => setExpandedTasks(p => ({ ...p, [key]: !p[key] }));
+
+  const roleLabel = (r) => {
+    const map = { mentor:"Mentor", associate:"Associate Researcher", board_admin:"Board Admin",
+      TM1:"Team Member 1", TM2:"Team Member 2", TM3:"Team Member 3", TM4:"Team Member 4",
+      TM5:"Team Member 5", TM6:"Team Member 6", TM7:"Team Member 7", TM8:"Team Member 8" };
+    return map[r] || r;
+  };
+
+  const roleColor = (r) => {
+    if (r === "mentor") return "#5B3BF5";
+    if (r === "associate" || r === "associate_researcher") return "#1A6DFF";
+    if (r === "board_admin" || r === "admin") return "#E8860A";
+    const tm = parseInt(r.replace("TM",""));
+    const cols = ["#0EA5C5","#0F9F6E","#E53E5C","#E8860A","#5B3BF5","#1A6DFF","#0EA5C5","#0F9F6E"];
+    return cols[(tm - 1) % cols.length] || "#5B3BF5";
+  };
+
+  const phaseColors = ["#E53E5C","#5B3BF5","#0EA5C5","#0F9F6E"];
+
+  const myTasks = challenge.sprints.map(s => ({
+    ...s,
+    myTasks: s.tasks[userRoleKey] || s.tasks["TM1"] || []
+  }));
+
+  return (
+    <div>
+      <style>{`
+        @keyframes miccai-fadein { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes miccai-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+        @keyframes miccai-bar { from{width:0} }
+        @keyframes miccai-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        .miccai-fadein { animation: miccai-fadein .35s cubic-bezier(.22,1,.36,1) both; }
+        .miccai-card { background:#fff; border-radius:16px; border:1px solid var(--frost); box-shadow:0 2px 12px rgba(91,59,245,.07); transition:box-shadow .2s,transform .2s; }
+        .miccai-card:hover { box-shadow:0 6px 28px rgba(91,59,245,.13); }
+        .miccai-tab { padding:8px 18px; border-radius:9px; border:1px solid transparent; font-size:13px; font-weight:600; cursor:pointer; background:transparent; font-family:'DM Sans',sans-serif; transition:all .18s; color:var(--ink3); }
+        .miccai-tab.active { background:#fff; border-color:var(--frost); color:var(--ink); box-shadow:0 2px 8px rgba(91,59,245,.1); }
+        .miccai-tab:hover:not(.active) { background:var(--snow); color:var(--ink); }
+        .miccai-chip-btn { display:flex; align-items:center; gap:8px; padding:10px 16px; border-radius:12px; border:2px solid transparent; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:700; transition:all .2s; }
+        .miccai-chip-btn.active { border-color:currentColor; }
+        .miccai-sprint-dot { width:14px; height:14px; border-radius:50%; border:2px solid; cursor:pointer; transition:all .2s; flex-shrink:0; }
+        .miccai-sprint-dot.done { background:currentColor; }
+        .miccai-sprint-dot.active { background:currentColor; transform:scale(1.3); box-shadow:0 0 0 3px rgba(91,59,245,.18); }
+        .miccai-task-row { padding:12px 16px; border-radius:10px; border:1px solid var(--frost); margin-bottom:8px; cursor:pointer; transition:all .18s; background:var(--snow); }
+        .miccai-task-row:hover { border-color:var(--mist); background:#fff; }
+        .miccai-task-row.expanded { border-color:var(--violet); background:#fff; box-shadow:0 2px 12px rgba(91,59,245,.1); }
+        .miccai-score-bar { height:10px; border-radius:6px; background:var(--frost); overflow:hidden; }
+        .miccai-score-fill { height:100%; border-radius:6px; animation:miccai-bar .6s ease both; transition:width .4s ease; }
+        .miccai-week-pill { display:inline-flex; align-items:center; gap:6px; padding:5px 14px; border-radius:20px; font-size:11px; font-weight:700; border:1px solid; letter-spacing:.3px; }
+        .miccai-assess-row { display:grid; grid-template-columns:120px 1fr 1fr; gap:16px; padding:14px 16px; border-radius:10px; border:1px solid var(--frost); margin-bottom:8px; align-items:start; transition:all .18s; }
+        .miccai-assess-row:hover { border-color:var(--mist); background:var(--snow); }
+        .miccai-arch-box { background:linear-gradient(135deg,#0C1227,#1a2045); border-radius:12px; padding:16px 20px; font-family:'DM Mono',monospace; font-size:12px; color:#a8d8ea; line-height:1.8; overflow-x:auto; }
+        .miccai-my-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:20px; font-size:11px; font-weight:700; background:linear-gradient(135deg,#5B3BF5,#1A6DFF); color:#fff; }
+      `}</style>
+
+      {/* Header Banner */}
+      <div style={{background:`linear-gradient(135deg,${challenge.color}18,${challenge.colorLight})`,border:`1px solid ${challenge.color}30`,borderRadius:20,padding:"24px 28px",marginBottom:24,position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",right:-20,top:-20,width:180,height:180,borderRadius:"50%",background:`${challenge.color}10`,pointerEvents:"none"}} />
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:16}}>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <span style={{fontSize:28}}>{challenge.icon}</span>
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:challenge.color,letterSpacing:1.5,textTransform:"uppercase",marginBottom:2}}>MICCAI 2026 · Medical Imaging Track</div>
+                <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:900,color:"var(--ink)",lineHeight:1.1}}>{challenge.fullName}</div>
+              </div>
+            </div>
+            <div style={{fontSize:13,color:"var(--ink2)",maxWidth:600,lineHeight:1.6}}>{challenge.theme}</div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
+            <div className="miccai-my-badge">👤 {roleLabel(userRoleKey)}</div>
+            <div style={{fontSize:11,color:"var(--ink3)"}}>8-Week Sprint · 4 Milestones</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Challenge Selector */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
+        {Object.values(MICCAI_CHALLENGES).map(c => (
+          <button key={c.id} onClick={() => switchChallenge(c.id)}
+            className="miccai-chip-btn"
+            style={{color:c.color,background:activeChallenge===c.id ? `${c.color}12` : "transparent",borderColor:activeChallenge===c.id ? c.color : "var(--frost)"}}>
+            <span>{c.icon}</span> {c.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Main Navigation Tabs */}
+      <div style={{display:"flex",gap:6,background:"var(--snow)",padding:5,borderRadius:12,border:"1px solid var(--frost)",marginBottom:20,flexWrap:"wrap"}}>
+        {[["overview","🎯","Overview"],["sprints","📅","Sprint Plan"],["mytasks","✅","My Tasks"],["assess","📊","Assessment"]].map(([id,ic,lb]) => (
+          <button key={id} className={`miccai-tab ${mainTab===id?"active":""}`} onClick={() => setMainTab(id)}>{ic} {lb}</button>
+        ))}
+      </div>
+
+      {/* ── TAB: OVERVIEW ── */}
+      {mainTab === "overview" && (
+        <div className="miccai-fadein" style={{display:"grid",gap:16}}>
+          {/* Challenge Details Row */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            <div className="miccai-card" style={{padding:20}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:12}}>Dataset</div>
+              <div style={{fontSize:14,fontWeight:600,color:"var(--ink)",lineHeight:1.6,marginBottom:12}}>{challenge.dataset}</div>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:8,marginTop:4}}>Challenge Tasks</div>
+              {challenge.tasks.map((t,i) => (
+                <div key={i} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:i<challenge.tasks.length-1?"1px solid var(--frost)":"none",alignItems:"flex-start"}}>
+                  <span style={{minWidth:22,height:22,borderRadius:"50%",background:`${challenge.color}18`,color:challenge.color,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{i+1}</span>
+                  <span style={{fontSize:13,color:"var(--ink2)",lineHeight:1.5}}>{t}</span>
+                </div>
+              ))}
+            </div>
+            <div className="miccai-card" style={{padding:20}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:12}}>Pipeline Architecture</div>
+              <div className="miccai-arch-box">{challenge.architecture}</div>
+              <div style={{marginTop:16,fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:8}}>Team Composition</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {["Mentor","Associate Researcher","TM1","TM2","TM3","TM4","TM5","TM6","TM7","TM8","Board Admin"].map((r,i) => (
+                  <span key={i} style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:"var(--snow)",border:"1px solid var(--frost)",color:"var(--ink2)"}}>{r}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 8-Week Timeline Visual */}
+          <div className="miccai-card" style={{padding:24}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:20}}>8-Week Sprint Timeline</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+              {challenge.sprints.map((s,i) => (
+                <div key={i} onClick={() => { setActiveSprint(i); setMainTab("sprints"); }}
+                  style={{padding:16,borderRadius:14,border:`2px solid ${phaseColors[i]}30`,background:`${phaseColors[i]}08`,cursor:"pointer",transition:"all .2s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.borderColor=phaseColors[i]+"80";}}
+                  onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.borderColor=phaseColors[i]+"30";}}>
+                  <div style={{fontSize:11,fontWeight:700,color:phaseColors[i],letterSpacing:.5,marginBottom:6}}>{s.weeks}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:"var(--ink)",lineHeight:1.3,marginBottom:8}}>{s.label}</div>
+                  <div style={{fontSize:11,color:"var(--ink3)"}}>
+                    {Object.values(s.tasks).flat().length} total tasks
+                  </div>
+                  <div style={{marginTop:10,height:4,borderRadius:3,background:`${phaseColors[i]}20`}}>
+                    <div style={{height:"100%",width:`${(i+1)*25}%`,background:phaseColors[i],borderRadius:3,transition:"width .5s"}} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Global Scoring Framework */}
+          <div className="miccai-card" style={{padding:24}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:16}}>360° Assessment Framework</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+              {[["Data Pipeline","20%","pipeline","#0EA5C5"],["Core Architecture","30%","architecture","#5B3BF5"],["Optimization & Loss","25%","optimization","#E8860A"],["Validation & Docker","25%","validation","#0F9F6E"]].map(([n,w,k,c]) => (
+                <div key={k} style={{padding:16,borderRadius:12,background:"var(--snow)",border:"1px solid var(--frost)"}}>
+                  <div style={{fontSize:20,fontWeight:900,color:c,marginBottom:4}}>{w}</div>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--ink)",marginBottom:12}}>{n}</div>
+                  <div className="miccai-score-bar">
+                    <div className="miccai-score-fill" style={{width:`${scores[k]*20}%`,background:c}} />
+                  </div>
+                  <input type="range" min={0} max={5} value={scores[k]} onChange={e=>setScores(p=>({...p,[k]:+e.target.value}))}
+                    style={{width:"100%",marginTop:8,accentColor:c}} />
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--ink3)",marginTop:2}}>
+                    <span>0</span><span style={{color:c,fontWeight:700}}>{Math.round(scores[k]*parseFloat(w)/100*100)}pts</span><span>5</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{marginTop:16,padding:"14px 20px",borderRadius:12,background:"linear-gradient(135deg,var(--violet),var(--azure))",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <div style={{color:"rgba(255,255,255,.8)",fontSize:11,fontWeight:600,marginBottom:2}}>Estimated Total Score</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,.6)"}}>Pipeline×0.20 + Architecture×0.30 + Optimization×0.25 + Validation×0.25</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontFamily:"'Fraunces',serif",fontSize:40,fontWeight:900,color:"#fff",lineHeight:1}}>{totalScore}</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,.7)"}}>out of 100</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB: SPRINT PLAN ── */}
+      {mainTab === "sprints" && (
+        <div className="miccai-fadein">
+          {/* Sprint Selector */}
+          <div style={{display:"flex",alignItems:"center",gap:0,marginBottom:20,background:"#fff",borderRadius:14,border:"1px solid var(--frost)",padding:4,width:"fit-content"}}>
+            {challenge.sprints.map((s,i) => (
+              <button key={i} onClick={() => setActiveSprint(i)}
+                style={{padding:"9px 18px",borderRadius:10,border:"none",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,transition:"all .18s",
+                  background:activeSprint===i ? phaseColors[i] : "transparent",
+                  color:activeSprint===i ? "#fff" : "var(--ink3)"}}>
+                {s.weeks}
+              </button>
+            ))}
+          </div>
+
+          {/* Active Sprint Detail */}
+          {challenge.sprints.map((sprint, si) => si === activeSprint && (
+            <div key={si} className="miccai-fadein">
+              {/* Sprint Header */}
+              <div style={{background:`linear-gradient(135deg,${phaseColors[si]}18,${phaseColors[si]}08)`,border:`1px solid ${phaseColors[si]}30`,borderRadius:16,padding:"18px 22px",marginBottom:20,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+                <div style={{width:48,height:48,borderRadius:12,background:phaseColors[si],display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:"#fff",fontWeight:900,flexShrink:0}}>{si+1}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11,fontWeight:700,color:phaseColors[si],letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>{sprint.weeks} · Milestone {si+1} of 4</div>
+                  <div style={{fontSize:18,fontWeight:800,color:"var(--ink)"}}>{sprint.label}</div>
+                </div>
+                <div style={{fontSize:12,color:"var(--ink3)",textAlign:"right"}}>
+                  <div style={{fontWeight:700,color:phaseColors[si],fontSize:20}}>{Object.values(sprint.tasks).flat().length}</div>
+                  <div>total tasks</div>
+                </div>
+              </div>
+
+              {/* Tasks by Role */}
+              <div style={{display:"grid",gap:10}}>
+                {Object.entries(sprint.tasks).map(([role, tasks]) => {
+                  const key = `${si}-${role}`;
+                  const isOpen = expandedTasks[key];
+                  const rColor = roleColor(role);
+                  const isMyRole = role === userRoleKey;
+                  return (
+                    <div key={role} className={`miccai-task-row ${isOpen?"expanded":""}`}
+                      onClick={() => toggleTask(key)}
+                      style={{border:`1px solid ${isMyRole ? challenge.color : isOpen ? "var(--violet)" : "var(--frost)"}`,
+                        background:isMyRole ? `${challenge.color}06` : isOpen ? "#fff" : "var(--snow)"}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <span style={{width:10,height:10,borderRadius:"50%",background:rColor,flexShrink:0,display:"inline-block"}} />
+                          <span style={{fontSize:13,fontWeight:700,color:"var(--ink)"}}>{roleLabel(role)}</span>
+                          {isMyRole && <span className="miccai-my-badge" style={{fontSize:10,padding:"2px 8px"}}>You</span>}
+                          <span style={{fontSize:11,color:"var(--ink3)"}}>{tasks.length} task{tasks.length!==1?"s":""}</span>
+                        </div>
+                        <span style={{fontSize:16,color:"var(--ink3)",transition:"transform .2s",display:"inline-block",transform:isOpen?"rotate(180deg)":""}}>▾</span>
+                      </div>
+                      {isOpen && (
+                        <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid var(--frost)",display:"grid",gap:8}} onClick={e=>e.stopPropagation()}>
+                          {tasks.map((t,ti) => (
+                            <div key={ti} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"8px 12px",borderRadius:8,background:`${rColor}08`,border:`1px solid ${rColor}20`}}>
+                              <span style={{minWidth:20,height:20,borderRadius:6,background:rColor,color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1}}>{ti+1}</span>
+                              <span style={{fontSize:13,color:"var(--ink)",lineHeight:1.55}}>{t}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── TAB: MY TASKS ── */}
+      {mainTab === "mytasks" && (
+        <div className="miccai-fadein">
+          <div style={{padding:"14px 18px",borderRadius:12,background:`${challenge.color}10`,border:`1px solid ${challenge.color}30`,marginBottom:20,display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:22}}>{challenge.icon}</span>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:"var(--ink)"}}>Your Role: <span style={{color:challenge.color}}>{roleLabel(userRoleKey)}</span></div>
+              <div style={{fontSize:12,color:"var(--ink3)"}}>Tasks tailored to your role across all 4 sprint milestones</div>
+            </div>
+          </div>
+          {myTasks.map((sprint, si) => (
+            <div key={si} style={{marginBottom:20}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                <span className="miccai-week-pill" style={{color:phaseColors[si],borderColor:`${phaseColors[si]}40`,background:`${phaseColors[si]}10`}}>
+                  {sprint.weeks}
+                </span>
+                <span style={{fontSize:14,fontWeight:700,color:"var(--ink)"}}>{sprint.label}</span>
+              </div>
+              <div style={{display:"grid",gap:8,paddingLeft:8,borderLeft:`3px solid ${phaseColors[si]}40`}}>
+                {sprint.myTasks.length > 0 ? sprint.myTasks.map((t,ti) => (
+                  <div key={ti} style={{display:"flex",gap:12,alignItems:"flex-start",padding:"12px 16px",borderRadius:10,background:"#fff",border:"1px solid var(--frost)",boxShadow:"0 1px 4px rgba(91,59,245,.05)"}}>
+                    <div style={{width:28,height:28,borderRadius:8,background:`${phaseColors[si]}15`,color:phaseColors[si],fontSize:12,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      {ti+1}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,color:"var(--ink)",lineHeight:1.6}}>{t}</div>
+                      <div style={{marginTop:6,display:"flex",gap:6,flexWrap:"wrap"}}>
+                        <span style={{fontSize:10,fontWeight:600,color:"var(--ink3)",background:"var(--snow)",border:"1px solid var(--frost)",padding:"2px 8px",borderRadius:10}}>{sprint.weeks}</span>
+                        <span style={{fontSize:10,fontWeight:600,color:phaseColors[si],background:`${phaseColors[si]}10`,border:`1px solid ${phaseColors[si]}30`,padding:"2px 8px",borderRadius:10}}>Milestone {si+1}</span>
+                      </div>
+                    </div>
+                  </div>
+                )) : (
+                  <div style={{padding:"12px 16px",borderRadius:10,background:"var(--snow)",border:"1px dashed var(--frost)",color:"var(--ink3)",fontSize:13}}>
+                    No specific tasks assigned for this sprint — support your team as needed.
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {/* Key Recommendations for Role */}
+          <div className="miccai-card" style={{padding:20,marginTop:8}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:14}}>
+              {isMentor || isAssociate ? "Mentor & Associate Recommended Approaches" : "Recommended Approaches for Team Members"}
+            </div>
+            {(isMentor || isAssociate) ? (
+              <div style={{display:"grid",gap:10}}>
+                {[
+                  ["📋","Technical Architecture Review","Regularly review the team's core architecture decisions — validate that multi-task or multi-modal approaches are well-motivated and aligned with the challenge metric."],
+                  ["🔬","Clinical Validation Mindset","Frame all technical decisions around clinical plausibility — ensure preprocessing, loss functions, and evaluation metrics reflect real-world clinical constraints."],
+                  ["📈","Convergence Monitoring","Monitor training curves bi-weekly; flag any signs of gradient instability, mode collapse, or task dominance in multi-task settings early."],
+                  ["🐳","Docker & Submission Readiness","Plan Docker containerization from Week 5 onward — don't leave it to the last sprint. Validate against the challenge's Codabench/Grand-Challenge specs early."],
+                  ["📝","Paper Draft Parallel Track","Begin drafting the methodology and results sections by Week 5 — a submission paper draft running in parallel with code reduces Week 7–8 pressure."]
+                ].map(([ic,t,d],i) => (
+                  <div key={i} style={{display:"flex",gap:12,padding:"12px 16px",borderRadius:10,background:"var(--snow)",border:"1px solid var(--frost)"}}>
+                    <span style={{fontSize:22,flexShrink:0}}>{ic}</span>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:700,color:"var(--ink)",marginBottom:4}}>{t}</div>
+                      <div style={{fontSize:12,color:"var(--ink2)",lineHeight:1.6}}>{d}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{display:"grid",gap:10}}>
+                {[
+                  ["🔧","Start with Baselines","Don't over-engineer early — get a working baseline in Weeks 1–2, then iterate. A simple 3D UNet that trains is worth more than a complex architecture that doesn't."],
+                  ["📓","Document Everything","Keep a daily experiment log (even just a notebook). Loss curves, dataset sizes, preprocessing steps — these become your paper's methodology section."],
+                  ["🤝","Communicate Blockers Early","If stuck on an implementation, raise it in the daily standup immediately. Don't spend more than 1 day on a single blocker without asking for help."],
+                  ["🐳","Learn Docker Early","Don't wait until Week 7. Practice building a Docker image with your preprocessing + inference pipeline in Week 4–5 to avoid last-minute issues."],
+                  ["🎯","Focus on Challenge Metrics","Understand exactly what the challenge evaluates (Dice, TRE, SSIM, MOTA, etc.) and optimize for those — not general accuracy. Read the challenge evaluation code."]
+                ].map(([ic,t,d],i) => (
+                  <div key={i} style={{display:"flex",gap:12,padding:"12px 16px",borderRadius:10,background:"var(--snow)",border:"1px solid var(--frost)"}}>
+                    <span style={{fontSize:22,flexShrink:0}}>{ic}</span>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:700,color:"var(--ink)",marginBottom:4}}>{t}</div>
+                      <div style={{fontSize:12,color:"var(--ink2)",lineHeight:1.6}}>{d}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB: ASSESSMENT ── */}
+      {mainTab === "assess" && (
+        <div className="miccai-fadein">
+          {/* Key Roles Assessment Table */}
+          <div className="miccai-card" style={{padding:24,marginBottom:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:16}}>Role-Based KPI Rubric — {challenge.name}</div>
+            <div style={{display:"grid",gridTemplateColumns:"120px 1fr 1fr",gap:0,marginBottom:6}}>
+              {["Role","Metric Tracker","Success Criteria"].map(h => (
+                <div key={h} style={{fontSize:11,fontWeight:700,color:"var(--ink3)",padding:"6px 16px",letterSpacing:.8}}>{h}</div>
+              ))}
+            </div>
+            {challenge.assessment.map((a,i) => (
+              <div key={i} className="miccai-assess-row" style={{background:a.role===roleLabel(userRoleKey)?`${challenge.color}06`:"transparent",border:`1px solid ${a.role===roleLabel(userRoleKey)?challenge.color:"var(--frost)"}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{width:8,height:8,borderRadius:"50%",background:roleColor(a.role.replace("Team Member ","TM").replace(/ /g,"")),flexShrink:0,display:"inline-block"}} />
+                  <span style={{fontSize:12,fontWeight:700,color:"var(--ink)"}}>{a.role}</span>
+                  {a.role===roleLabel(userRoleKey)&&<span className="miccai-my-badge" style={{fontSize:9,padding:"1px 6px"}}>You</span>}
+                </div>
+                <div style={{fontSize:12,fontWeight:600,color:"var(--ink2)"}}>{a.metric}</div>
+                <div style={{fontSize:12,color:"var(--ink3)",lineHeight:1.5}}>{a.criteria}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* 360° Scoring Engine */}
+          <div className="miccai-card" style={{padding:24}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:20}}>360° Sprint Review — Score Calculator</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+              {[
+                ["Data Pipeline Execution","pipeline","20","Evaluates spatial alignment, multi-modal registration, augmentation design, and ingestion performance","#0EA5C5"],
+                ["Core Architecture & Innovation","architecture","30","Evaluates how effectively design handles challenge requirements (multi-phase, temporal tracking, user input)","#5B3BF5"],
+                ["Optimization & Loss Engineering","optimization","25","Measures training stability, loss function design, hyperparameter balancing, and convergence behavior","#E8860A"],
+                ["Validation, Tracking & Containerization","validation","25","Assesses metric alignment, validation tracking, and stable Docker configs matching challenge rules","#0F9F6E"]
+              ].map(([name,key,maxPts,desc,color]) => (
+                <div key={key} style={{padding:18,borderRadius:14,border:`1px solid ${color}30`,background:`${color}06`}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--ink)"}}>{name}</div>
+                    <div style={{fontSize:22,fontWeight:900,color:color}}>{maxPts}pts</div>
+                  </div>
+                  <div style={{fontSize:11,color:"var(--ink3)",lineHeight:1.6,marginBottom:14}}>{desc}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{flex:1}}>
+                      <div className="miccai-score-bar">
+                        <div className="miccai-score-fill" style={{width:`${scores[key]*20}%`,background:color}} />
+                      </div>
+                      <input type="range" min={0} max={5} value={scores[key]} onChange={e=>setScores(p=>({...p,[key]:+e.target.value}))}
+                        style={{width:"100%",marginTop:6,accentColor:color}} />
+                    </div>
+                    <div style={{fontSize:22,fontWeight:900,color,minWidth:36,textAlign:"center"}}>{scores[key]}</div>
+                  </div>
+                  <div style={{fontSize:11,color:"var(--ink3)",marginTop:6}}>
+                    Score {scores[key]}/5 → <strong style={{color}}>{Math.round(scores[key]*parseFloat(maxPts)/5)}pts</strong> earned
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{marginTop:20,padding:"18px 24px",borderRadius:14,background:"linear-gradient(135deg,#0C1227,#1a2045)",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:16}}>
+              <div>
+                <div style={{color:"rgba(255,255,255,.6)",fontSize:11,fontWeight:600,marginBottom:6,letterSpacing:1}}>FORMULA</div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#a8d8ea",lineHeight:1.8}}>
+                  Total = (Pipeline × 0.20) + (Architecture × 0.30)<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ (Optimization × 0.25) + (Validation × 0.25)
+                </div>
+              </div>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontFamily:"'Fraunces',serif",fontSize:56,fontWeight:900,color:"#fff",lineHeight:1}}>{totalScore}</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,.5)"}}>/ 100 points</div>
+                <div style={{marginTop:6,display:"inline-block",padding:"4px 14px",borderRadius:20,fontSize:11,fontWeight:700,
+                  background:totalScore>=80?"#0F9F6E":totalScore>=60?"#E8860A":"#E53E5C",color:"#fff"}}>
+                  {totalScore>=80?"Excellent":totalScore>=60?"On Track":"Needs Improvement"}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TrainingModules({ user }) {
   const [tab, setTab] = useState(0);
 
@@ -3455,6 +4353,7 @@ function AppShell() {
         { id:"competitions", icon:"🏆", label:"Competitions" },
         { id:"resources",    icon:"⚙️", label:"Request Resources" },
         { id:"calendar",     icon:"📅", label:"Enrichment Calendar" },
+        { id:"challenges",   icon:"🏥", label:"MICCAI Challenges" },
         { id:"profile",      icon:"👤", label:"My Profile" },
       ],
       pages: {
@@ -3465,6 +4364,7 @@ function AppShell() {
         competitions: <CompetitionsView user={user}/>,
         resources:    <ResourceRequests user={user}/>,
         calendar:     <EnrichmentCalendar user={user}/>,
+        challenges:   <MICCAIChallenges user={user}/>,
       },
       defaultPage: "dashboard",
     },
@@ -3474,15 +4374,17 @@ function AppShell() {
         { id:"mentees",   icon:"👥", label:"My Mentees" },
         { id:"meetings",  icon:"📅", label:"Meeting Scheduler" },
         { id:"review",    icon:"📝", label:"Paper Review", badge:"2" },
-        { id:"progress",  icon:"📊", label:"Progress Tracking" },
-        { id:"profile",   icon:"👤", label:"My Profile" },
+        { id:"progress",    icon:"📊", label:"Progress Tracking" },
+        { id:"challenges",  icon:"🏥", label:"MICCAI Challenges" },
+        { id:"profile",     icon:"👤", label:"My Profile" },
       ],
       pages: {
-        dashboard: <MentorDashboard user={user}/>,
-        mentees:   <MentorMentees user={user}/>,
-        meetings:  <MentorMeetings user={user}/>,
-        review:    <PaperReview user={user}/>,
-        progress:  <MenteeProgress user={user}/>,
+        dashboard:  <MentorDashboard user={user}/>,
+        mentees:    <MentorMentees user={user}/>,
+        meetings:   <MentorMeetings user={user}/>,
+        review:     <PaperReview user={user}/>,
+        progress:   <MenteeProgress user={user}/>,
+        challenges: <MICCAIChallenges user={user}/>,
       },
       defaultPage: "dashboard",
     },
