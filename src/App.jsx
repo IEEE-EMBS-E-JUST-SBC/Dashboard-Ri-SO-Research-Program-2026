@@ -3,7 +3,33 @@ import { useState, useEffect, useCallback, createContext, useContext } from "rea
 // ─────────────────────────────────────────────
 //  CONSTANTS & DATA
 // ─────────────────────────────────────────────
-const ROLES = { SUPERADMIN: "superadmin", MENTOR: "mentor", PARTICIPANT: "participant", PROADMIN: "proadmin" };
+const ROLES = {
+  SUPERADMIN:           "superadmin",
+  MENTOR:               "mentor",
+  PARTICIPANT:          "participant",
+  PROADMIN:             "proadmin",
+  ASSOCIATE_RESEARCHER: "associate_researcher",
+  TEAM_ADMIN:           "team_admin",   // team-level admin (also counts as member)
+};
+// ─────────────────────────────────────────────
+//  TEAM REGISTRY  (from Riso_-_Teams.xlsx)
+// ─────────────────────────────────────────────
+const TEAMS = [
+  { id:"A", challenge:"AutoPET V — Automated Lesion Segmentation in Whole-Body PET/CT", track:"Medical Imaging", meeting:"Monday 12:00 PM (GMT+3)" },
+  { id:"B", challenge:"MRIxFields — Cross-Field MRI Translation & Harmonisation Challenge", track:"Medical Imaging", meeting:"Saturday 7:00 PM (GMT+3)" },
+  { id:"C", challenge:"Learn2Reg — Medical Image Registration Challenge", track:"Medical Imaging", meeting:"Friday 3:00 PM (GMT+3)" },
+  { id:"D", challenge:"AMPLIFAI — Annotated Multi-Phase Liver Imaging For AI", track:"Medical Imaging", meeting:"Saturday 9:00 PM (GMT+3)" },
+  { id:"G", challenge:"EndoVis 2026 — Endoscopic Vision Challenge 2026", track:"Medical Imaging", meeting:"Monday 7:00 PM & Friday 7:00 PM (GMT+3)" },
+  { id:"H", challenge:"Bioinformatics — TBD", track:"Bioinformatics", meeting:"Sunday 11:00 PM (GMT+3)" },
+  { id:"K", challenge:"Bioinformatics — TBD", track:"Bioinformatics", meeting:"Sunday 11:00 PM (GMT+3)" },
+  { id:"X", challenge:"BCI Annual Award 2026", track:"Biomedical Sensors", meeting:"TBD" },
+  { id:"Y", challenge:"SteadiWrist (VitaNova)", track:"Biomedical Sensors", meeting:"Wednesday 6:00 PM (GMT+3)" },
+  { id:"J", challenge:"BCI Annual Award 2026 — MS Disease Prediction + Treatment Plan", track:"Biomedical Sensors", meeting:"Monday 9:00 PM (GMT+3)" },
+  { id:"Z", challenge:"Voice Loudness Trainer", track:"Biomedical Sensors", meeting:"Monday 6:00 PM (GMT+3)" },
+];
+
+// Helper: get team object for a user
+const getTeam = (user) => TEAMS.find(t => t.id === (user?.teamId || user?.team || "")) || null;
 
 // Local fallback seed — only used if Google Sheets is completely unreachable.
 // In production, all users live in the "Users" sheet of your spreadsheet.
@@ -97,6 +123,40 @@ const sheetsAPI = {
       return await r.json();
     } catch { return { status:"offline" }; }
   }
+  async getByTeam(sheet, teamId) {
+    try {
+      const r = await fetch(SHEETS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "getByTeam", sheet, teamId })
+      });
+      if (!r.ok) return [];
+      const json = await r.json();
+      return json?.data ?? [];
+    } catch { return []; }
+  },
+
+  async voteSlot(meetingId, teamId, voterEmail, slot) {
+    try {
+      const r = await fetch(SHEETS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "voteSlot", sheet: "MeetingVotes", meetingId, teamId, voterEmail, slot })
+      });
+      return await r.json();
+    } catch { return { status: "offline" }; }
+  },
+
+  async gradeTask(taskId, score, feedback, status) {
+    try {
+      const r = await fetch(SHEETS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "gradeTask", sheet: "TeamTasks", taskId, score, feedback, status })
+      });
+      return await r.json();
+    } catch { return { status: "offline" }; }
+  },
 };
 
 // ─────────────────────────────────────────────
@@ -2542,7 +2602,851 @@ function EnrichmentCalendar({ user }) {
     </div>
   );
 }
+// ─────────────────────────────────────────────────────────────────────────────
+//  TEAM-SCOPED GRADING SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
 
+// Grading weights — editable in one place
+const GRADE_WEIGHTS = {
+  tasks:      0.50,   // 50 pts: average of task scores
+  attendance: 0.25,   // 25 pts: attendance rate × 25
+  bonus:      0.15,   // up to +15 bonus pts
+  penalty:    -0.10,  // up to -10 penalty pts
+};
+
+function GradeBar({ value, max = 100, color = "var(--violet)" }) {
+  const pct = Math.min(100, Math.max(0, (value / max) * 100));
+  return (
+    <div style={{ height: 8, borderRadius: 6, background: "var(--frost)", overflow: "hidden" }}>
+      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 6, transition: "width .4s" }} />
+    </div>
+  );
+}
+
+function GradePill({ score }) {
+  const color = score >= 85 ? "var(--jade)" : score >= 65 ? "var(--amber)" : "var(--rose)";
+  const label = score >= 85 ? "Excellent" : score >= 65 ? "On Track" : "Needs Work";
+  return (
+    <span style={{ padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: `${color}18`, color, border: `1px solid ${color}40` }}>
+      {label} · {score}
+    </span>
+  );
+}
+
+// ─── Member view: see my own grade breakdown ────────────────────────────────
+function MyGradeView({ user }) {
+  const team = getTeam(user);
+  const [tasks, setTasks]       = useState([]);
+  const [meetings, setMeetings] = useState([]);
+  const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    if (!team) { setLoading(false); return; }
+    Promise.all([
+      sheetsAPI.getByTeam("TeamTasks",    team.id),
+      sheetsAPI.getByTeam("MeetingNotes", team.id),
+    ]).then(([t, m]) => { setTasks(t); setMeetings(m); setLoading(false); });
+  }, [team?.id]);
+
+  if (!team) return <div className="card"><div className="card-body">No team assigned. Contact your admin.</div></div>;
+  if (loading) return <div className="card"><div className="card-body">Loading grades…</div></div>;
+
+  const myTasks       = tasks.filter(t => t.assignedTo === user.email || t.assignedTo === "all");
+  const bonusTasks    = myTasks.filter(t => t.isBonus === "true" || t.isBonus === true);
+  const regularTasks  = myTasks.filter(t => t.isBonus !== "true" && t.isBonus !== true);
+  const submittedReg  = regularTasks.filter(t => t.status === "graded");
+  const taskAvg       = submittedReg.length
+    ? Math.round(submittedReg.reduce((a, t) => a + Number(t.score || 0), 0) / submittedReg.length)
+    : 0;
+  const bonusTotal    = Math.min(15, bonusTasks.filter(t => t.status === "graded").reduce((a, t) => a + Number(t.score || 0) * 0.15, 0));
+  const attendedCount = meetings.filter(m => (m.attendees || "").includes(user.email)).length;
+  const attendancePct = meetings.length ? Math.round((attendedCount / meetings.length) * 100) : 0;
+  const attendanceScore = Math.round(attendancePct * 0.25);
+  const penaltyScore  = 0; // admins set this; shown from TeamGrades sheet
+  const totalScore    = Math.min(100, Math.max(0, taskAvg * 0.5 + attendanceScore + bonusTotal - penaltyScore));
+
+  return (
+    <div>
+      <div className="banner" style={{ marginBottom: 24 }}>
+        <div>
+          <div className="banner-chip">Team {team.id} · {team.track}</div>
+          <div className="banner-title">My Grade</div>
+          <div className="banner-sub">{team.challenge}</div>
+        </div>
+        <div className="bstats">
+          <div><div className="bstat-val" style={{ color: "var(--jade)" }}>{Math.round(totalScore)}</div><div className="bstat-label">Total</div></div>
+          <div><div className="bstat-val">{taskAvg}</div><div className="bstat-label">Tasks</div></div>
+          <div><div className="bstat-val">{attendancePct}%</div><div className="bstat-label">Attendance</div></div>
+        </div>
+      </div>
+
+      {/* Score breakdown */}
+      <div className="g2 mb6">
+        {[
+          { label: "Task Score (50 pts)", value: Math.round(taskAvg * 0.5), max: 50, color: "var(--violet)" },
+          { label: "Attendance (25 pts)", value: attendanceScore,           max: 25, color: "var(--azure)" },
+          { label: "Bonus (up to +15)",  value: Math.round(bonusTotal),    max: 15, color: "var(--jade)" },
+          { label: "Penalties",          value: penaltyScore,              max: 10, color: "var(--rose)" },
+        ].map(({ label, value, max, color }) => (
+          <div key={label} className="card">
+            <div className="card-body">
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, fontWeight: 700, color }}>{value} / {max}</span>
+              </div>
+              <GradeBar value={value} max={max} color={color} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Task list */}
+      <div className="card">
+        <div className="card-header"><div className="card-title">My Tasks</div><GradePill score={Math.round(totalScore)} /></div>
+        <div className="card-body" style={{ padding: 0 }}>
+          {myTasks.length === 0
+            ? <div style={{ padding: 20, color: "var(--ink3)", fontSize: 13 }}>No tasks assigned yet.</div>
+            : myTasks.map((t, i) => (
+              <div key={t.id || i} style={{ padding: "14px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{t.taskTitle} {t.isBonus === "true" && <span style={{ fontSize: 10, background: "var(--jade)18", color: "var(--jade)", padding: "2px 8px", borderRadius: 10, marginLeft: 6, fontWeight: 700 }}>BONUS</span>}</div>
+                  <div className="txt-muted" style={{ fontSize: 11 }}>Due: {t.dueDate || "—"} · {t.status}</div>
+                </div>
+                {t.status === "graded" && (
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 700, color: "var(--jade)" }}>{t.score}</div>
+                    <div style={{ fontSize: 10, color: "var(--ink3)" }}>/ 100</div>
+                  </div>
+                )}
+                {t.status !== "graded" && (
+                  <span className={`badge ${t.status === "submitted" ? "b-review" : t.status === "assigned" ? "b-phase" : "b-qual"}`}>{t.status || "pending"}</span>
+                )}
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  TASK SUBMISSION  (member view)
+// ─────────────────────────────────────────────────────────────────────────────
+function TaskSubmissionView({ user }) {
+  const team = getTeam(user);
+  const [tasks, setTasks]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState({});
+  const [form, setForm]     = useState({});
+  const [toast, setToast]   = useState("");
+
+  useEffect(() => {
+    if (!team) { setLoading(false); return; }
+    sheetsAPI.getByTeam("TeamTasks", team.id).then(t => { setTasks(t); setLoading(false); });
+  }, [team?.id]);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+
+  const submit = async (task) => {
+    const link = form[task.id]?.link || "";
+    const note = form[task.id]?.note || "";
+    if (!link) { showToast("Paste a link before submitting."); return; }
+    setSubmitting(p => ({ ...p, [task.id]: true }));
+    await sheetsAPI.push("TeamTasks", { ...task, status: "submitted", submittedAt: new Date().toISOString(), submissionLink: link, submissionNote: note });
+    // Also update the existing row
+    if (task.id) {
+      await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { status: "submitted", submittedAt: new Date().toISOString(), submissionLink: link, submissionNote: note });
+    }
+    setTasks(p => p.map(t => t.id === task.id ? { ...t, status: "submitted", submissionLink: link } : t));
+    setSubmitting(p => ({ ...p, [task.id]: false }));
+    showToast("Task submitted ✓");
+  };
+
+  if (!team) return <div className="card"><div className="card-body">No team assigned.</div></div>;
+  if (loading) return <div className="card"><div className="card-body">Loading tasks…</div></div>;
+
+  const myTasks = tasks.filter(t => t.assignedTo === user.email || t.assignedTo === "all");
+  const pending = myTasks.filter(t => t.status === "assigned" || t.status === "pending");
+  const done    = myTasks.filter(t => t.status === "submitted" || t.status === "graded");
+
+  return (
+    <div>
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "var(--jade)", color: "#fff", padding: "10px 20px", borderRadius: 10, fontWeight: 700, zIndex: 9999 }}>{toast}</div>}
+      <div className="banner" style={{ marginBottom: 24 }}>
+        <div>
+          <div className="banner-chip">Team {team.id}</div>
+          <div className="banner-title">Submit Tasks</div>
+          <div className="banner-sub">{team.challenge}</div>
+        </div>
+        <div className="bstats">
+          <div><div className="bstat-val">{pending.length}</div><div className="bstat-label">Pending</div></div>
+          <div><div className="bstat-val">{done.length}</div><div className="bstat-label">Submitted</div></div>
+        </div>
+      </div>
+
+      {pending.length === 0 && done.length === 0 && (
+        <div className="card"><div className="card-body" style={{ color: "var(--ink3)", fontSize: 13 }}>No tasks assigned to you yet. Check back after the next meeting.</div></div>
+      )}
+
+      {pending.map((task, i) => (
+        <div key={task.id || i} className="card" style={{ marginBottom: 16 }}>
+          <div className="card-header">
+            <div className="card-title">{task.taskTitle} {task.isBonus === "true" && <span style={{ fontSize: 11, background: "var(--jade)20", color: "var(--jade)", padding: "2px 8px", borderRadius: 10, marginLeft: 8, fontWeight: 700 }}>BONUS +15 pts</span>}</div>
+            <span className="badge b-phase">Due {task.dueDate || "TBD"}</span>
+          </div>
+          <div className="card-body">
+            {task.taskDesc && <p style={{ fontSize: 13, color: "var(--ink3)", marginBottom: 16 }}>{task.taskDesc}</p>}
+            <div className="fg"><label className="flabel">Submission Link (GitHub / Drive / Colab / etc.)</label>
+              <input className="finput" placeholder="https://..." value={form[task.id]?.link || ""} onChange={e => setForm(p => ({ ...p, [task.id]: { ...p[task.id], link: e.target.value } }))} />
+            </div>
+            <div className="fg"><label className="flabel">Note (optional)</label>
+              <textarea className="finput ftextarea" placeholder="Any notes for the reviewer…" style={{ minHeight: 60 }} value={form[task.id]?.note || ""} onChange={e => setForm(p => ({ ...p, [task.id]: { ...p[task.id], note: e.target.value } }))} />
+            </div>
+            <button className="btn btn-p" onClick={() => submit(task)} disabled={submitting[task.id]}>
+              {submitting[task.id] ? "Submitting…" : "Submit Task →"}
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {done.length > 0 && (
+        <div className="card">
+          <div className="card-header"><div className="card-title">Completed Tasks</div></div>
+          <div className="card-body" style={{ padding: 0 }}>
+            {done.map((t, i) => (
+              <div key={t.id || i} style={{ padding: "14px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{t.taskTitle}</div>
+                  {t.submissionLink && <a href={t.submissionLink} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--azure)" }}>View submission ↗</a>}
+                  {t.feedback && <div style={{ fontSize: 12, marginTop: 4, padding: "6px 10px", background: "var(--frost)", borderRadius: 8 }}>💬 {t.feedback}</div>}
+                </div>
+                {t.status === "graded"
+                  ? <div style={{ textAlign: "center" }}><div style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, fontWeight: 700, color: "var(--jade)" }}>{t.score}</div><div style={{ fontSize: 10, color: "var(--ink3)" }}>/ 100</div></div>
+                  : <span className="badge b-review">Awaiting grade</span>
+                }
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  EXCUSE FORM  (any member)
+// ─────────────────────────────────────────────────────────────────────────────
+function ExcuseFormView({ user }) {
+  const team = getTeam(user);
+  const [form, setForm] = useState({ targetDate: "", excuseType: "meeting", reason: "" });
+  const [myExcuses, setMyExcuses] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    if (!team) return;
+    sheetsAPI.getByTeam("ExcuseRequests", team.id).then(data => {
+      setMyExcuses(data.filter(e => e.memberEmail?.toLowerCase() === user.email?.toLowerCase()));
+    });
+  }, [team?.id]);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3500); };
+
+  const submit = async () => {
+    if (!form.targetDate || !form.reason.trim()) { showToast("Fill in the date and reason."); return; }
+    setSubmitting(true);
+    const record = {
+      id: `EX${Date.now()}`,
+      teamId: team.id,
+      memberEmail: user.email,
+      memberName: user.name || user.Name || user.email,
+      targetDate: form.targetDate,
+      excuseType: form.excuseType,
+      reason: form.reason,
+      status: "pending",
+      submittedAt: new Date().toISOString(),
+    };
+    await sheetsAPI.push("ExcuseRequests", record);
+    setMyExcuses(p => [record, ...p]);
+    setForm({ targetDate: "", excuseType: "meeting", reason: "" });
+    setSubmitting(false);
+    showToast("Excuse submitted ✓");
+  };
+
+  if (!team) return <div className="card"><div className="card-body">No team assigned.</div></div>;
+
+  return (
+    <div>
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "var(--jade)", color: "#fff", padding: "10px 20px", borderRadius: 10, fontWeight: 700, zIndex: 9999 }}>{toast}</div>}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-header"><div className="card-title">Submit an Excuse</div><div className="card-sub">For a missed meeting or task deadline</div></div>
+        <div className="card-body">
+          <div className="fg">
+            <label className="flabel">Type</label>
+            <div style={{ display: "flex", gap: 10 }}>
+              {[{ v: "meeting", label: "📅 Meeting absence" }, { v: "task", label: "📋 Task deadline" }].map(opt => (
+                <div key={opt.v} onClick={() => setForm(f => ({ ...f, excuseType: opt.v }))}
+                  style={{ padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "1.5px solid", borderColor: form.excuseType === opt.v ? "var(--violet)" : "var(--frost)", background: form.excuseType === opt.v ? "rgba(91,59,245,.07)" : "white", color: form.excuseType === opt.v ? "var(--violet)" : "var(--ink3)" }}>
+                  {opt.label}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="fg"><label className="flabel">Date (meeting date or task deadline)</label>
+            <input type="date" className="finput" value={form.targetDate} onChange={e => setForm(f => ({ ...f, targetDate: e.target.value }))} />
+          </div>
+          <div className="fg"><label className="flabel">Reason</label>
+            <textarea className="finput ftextarea" style={{ minHeight: 90 }} placeholder="Explain why you won't be able to attend / submit…" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} />
+          </div>
+          <button className="btn btn-p" onClick={submit} disabled={submitting}>{submitting ? "Submitting…" : "Submit Excuse"}</button>
+        </div>
+      </div>
+
+      {myExcuses.length > 0 && (
+        <div className="card">
+          <div className="card-header"><div className="card-title">My Excuse History</div></div>
+          <div className="card-body" style={{ padding: 0 }}>
+            {myExcuses.map((e, i) => (
+              <div key={e.id || i} style={{ padding: "14px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{e.excuseType === "meeting" ? "Meeting absence" : "Task deadline"} — {e.targetDate}</div>
+                  <div className="txt-muted" style={{ fontSize: 12, marginTop: 2 }}>{e.reason}</div>
+                </div>
+                <span className={`badge ${e.status === "approved" ? "b-qual" : e.status === "rejected" ? "" : "b-review"}`} style={e.status === "rejected" ? { background: "var(--rose)18", color: "var(--rose)" } : {}}>
+                  {e.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  MEETING NOTES + VOTING  (all roles)
+// ─────────────────────────────────────────────────────────────────────────────
+function MeetingNotesView({ user }) {
+  const team = getTeam(user);
+  const isAR    = user.teamRole === "associate_researcher" || user.teamRole === "associate";
+  const isAdmin = user.teamRole === "team_admin" || user.role === ROLES.SUPERADMIN || user.role === ROLES.TEAM_ADMIN;
+  const canManage = isAR || isAdmin;
+
+  const [meetings, setMeetings]   = useState([]);
+  const [votes, setVotes]         = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [selected, setSelected]   = useState(null);
+  const [newForm, setNewForm]     = useState({ title: "", date: "", notes: "", actionItems: "", votingOpen: false, votingSlots: "" });
+  const [showCreate, setShowCreate] = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [toast, setToast]         = useState("");
+
+  useEffect(() => {
+    if (!team) { setLoading(false); return; }
+    Promise.all([
+      sheetsAPI.getByTeam("MeetingNotes", team.id),
+      sheetsAPI.getByTeam("MeetingVotes", team.id),
+    ]).then(([m, v]) => {
+      setMeetings(m.sort((a, b) => new Date(b.meetingDate) - new Date(a.meetingDate)));
+      setVotes(v);
+      setLoading(false);
+      if (m.length > 0) setSelected(m[0].id);
+    });
+  }, [team?.id]);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+
+  const createMeeting = async () => {
+    if (!newForm.title || !newForm.date) { showToast("Title and date required."); return; }
+    setSaving(true);
+    const record = {
+      id: `MTG${Date.now()}`, teamId: team.id,
+      meetingDate: newForm.date, title: newForm.title,
+      notes: newForm.notes, actionItems: newForm.actionItems,
+      attendees: "", votingOpen: newForm.votingOpen ? "true" : "false",
+      votingSlots: newForm.votingSlots, createdBy: user.email,
+      createdAt: new Date().toISOString(),
+    };
+    await sheetsAPI.push("MeetingNotes", record);
+    setMeetings(p => [record, ...p]);
+    setSelected(record.id);
+    setShowCreate(false);
+    setNewForm({ title: "", date: "", notes: "", actionItems: "", votingOpen: false, votingSlots: "" });
+    setSaving(false);
+    showToast("Meeting note saved ✓");
+  };
+
+  const castVote = async (meeting, slot) => {
+    await sheetsAPI.voteSlot(meeting.id, team.id, user.email, slot);
+    setVotes(p => {
+      const existing = p.findIndex(v => v.meetingId === meeting.id && v.voterEmail?.toLowerCase() === user.email?.toLowerCase());
+      const record = { meetingId: meeting.id, teamId: team.id, voterEmail: user.email, slot, votedAt: new Date().toISOString() };
+      if (existing >= 0) { const n = [...p]; n[existing] = record; return n; }
+      return [...p, record];
+    });
+    showToast("Vote recorded ✓");
+  };
+
+  if (!team) return <div className="card"><div className="card-body">No team assigned.</div></div>;
+  if (loading) return <div className="card"><div className="card-body">Loading meetings…</div></div>;
+
+  const activeMeeting = meetings.find(m => m.id === selected);
+  const nextMeeting   = meetings.find(m => new Date(m.meetingDate) > new Date());
+
+  return (
+    <div>
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "var(--jade)", color: "#fff", padding: "10px 20px", borderRadius: 10, fontWeight: 700, zIndex: 9999 }}>{toast}</div>}
+
+      {/* Next meeting banner */}
+      {nextMeeting && (
+        <div className="banner" style={{ marginBottom: 20 }}>
+          <div>
+            <div className="banner-chip">📅 Next Meeting</div>
+            <div className="banner-title">{nextMeeting.title}</div>
+            <div className="banner-sub">{nextMeeting.meetingDate} · Team {team.id} — {team.meeting}</div>
+          </div>
+          <a href={`https://calendar.google.com/calendar/r/eventedit?text=${encodeURIComponent(nextMeeting.title)}&dates=${nextMeeting.meetingDate.replace(/-/g,"")}/${nextMeeting.meetingDate.replace(/-/g,"")}`} target="_blank" rel="noreferrer" className="btn btn-p" style={{ alignSelf: "center" }}>Add to Calendar ↗</a>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 20 }}>
+        {/* Sidebar: meeting list */}
+        <div className="card" style={{ alignSelf: "start" }}>
+          <div className="card-header">
+            <div className="card-title">Meetings</div>
+            {canManage && <button className="btn btn-p btn-sm" onClick={() => setShowCreate(s => !s)}>+ New</button>}
+          </div>
+          {showCreate && canManage && (
+            <div className="card-body" style={{ borderBottom: "1px solid var(--frost)" }}>
+              <div className="fg"><label className="flabel">Title</label><input className="finput" value={newForm.title} onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))} /></div>
+              <div className="fg"><label className="flabel">Date</label><input type="date" className="finput" value={newForm.date} onChange={e => setNewForm(f => ({ ...f, date: e.target.value }))} /></div>
+              <div className="fg"><label className="flabel">Notes</label><textarea className="finput ftextarea" style={{ minHeight: 70 }} value={newForm.notes} onChange={e => setNewForm(f => ({ ...f, notes: e.target.value }))} /></div>
+              <div className="fg"><label className="flabel">Action Items (one per line)</label><textarea className="finput ftextarea" style={{ minHeight: 50 }} value={newForm.actionItems} onChange={e => setNewForm(f => ({ ...f, actionItems: e.target.value }))} /></div>
+              <div className="fg">
+                <label className="flabel" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                  <input type="checkbox" checked={newForm.votingOpen} onChange={e => setNewForm(f => ({ ...f, votingOpen: e.target.checked }))} /> Open voting for next meeting slot
+                </label>
+              </div>
+              {newForm.votingOpen && (
+                <div className="fg"><label className="flabel">Voting slots (comma-separated, e.g. "Mon 8pm, Tue 6pm")</label><input className="finput" value={newForm.votingSlots} onChange={e => setNewForm(f => ({ ...f, votingSlots: e.target.value }))} /></div>
+              )}
+              <button className="btn btn-p" onClick={createMeeting} disabled={saving}>{saving ? "Saving…" : "Save Meeting"}</button>
+            </div>
+          )}
+          <div style={{ padding: 0 }}>
+            {meetings.length === 0 && <div style={{ padding: 16, fontSize: 13, color: "var(--ink3)" }}>No meetings yet.</div>}
+            {meetings.map(m => (
+              <div key={m.id} onClick={() => setSelected(m.id)}
+                style={{ padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--frost)", background: selected === m.id ? "rgba(91,59,245,.06)" : "white", borderLeft: selected === m.id ? "3px solid var(--violet)" : "3px solid transparent" }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{m.title}</div>
+                <div style={{ fontSize: 11, color: "var(--ink3)" }}>{m.meetingDate}</div>
+                {m.votingOpen === "true" && <span style={{ fontSize: 10, background: "var(--amber)18", color: "var(--amber)", padding: "1px 8px", borderRadius: 10, fontWeight: 700 }}>🗳 Voting open</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Main: selected meeting detail */}
+        {activeMeeting ? (
+          <div>
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="card-header">
+                <div>
+                  <div className="card-title">{activeMeeting.title}</div>
+                  <div className="card-sub">{activeMeeting.meetingDate} · Team {team.id}</div>
+                </div>
+              </div>
+              <div className="card-body">
+                {activeMeeting.notes
+                  ? <p style={{ fontSize: 14, lineHeight: 1.7, whiteSpace: "pre-wrap", color: "var(--ink2)" }}>{activeMeeting.notes}</p>
+                  : <p style={{ fontSize: 13, color: "var(--ink3)" }}>No notes recorded.</p>}
+
+                {activeMeeting.actionItems && (
+                  <div style={{ marginTop: 20 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Action Items</div>
+                    {activeMeeting.actionItems.split("\n").filter(Boolean).map((item, i) => (
+                      <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 6, fontSize: 13 }}>
+                        <span style={{ color: "var(--violet)", fontWeight: 700, flexShrink: 0 }}>→</span> {item}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Voting panel */}
+            {activeMeeting.votingOpen === "true" && activeMeeting.votingSlots && (
+              <div className="card">
+                <div className="card-header"><div className="card-title">🗳 Vote for Next Meeting Slot</div></div>
+                <div className="card-body">
+                  <p style={{ fontSize: 13, color: "var(--ink3)", marginBottom: 16 }}>Select the time that works best for you. One vote per person.</p>
+                  {activeMeeting.votingSlots.split(",").map(slot => slot.trim()).filter(Boolean).map(slot => {
+                    const slotVotes = votes.filter(v => v.meetingId === activeMeeting.id && v.slot === slot);
+                    const myVote    = votes.find(v => v.meetingId === activeMeeting.id && v.voterEmail?.toLowerCase() === user.email?.toLowerCase())?.slot;
+                    const isChosen  = myVote === slot;
+                    return (
+                      <div key={slot} onClick={() => castVote(activeMeeting, slot)}
+                        style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 10, marginBottom: 8, cursor: "pointer", border: "1.5px solid", borderColor: isChosen ? "var(--violet)" : "var(--frost)", background: isChosen ? "rgba(91,59,245,.08)" : "white", transition: "all .15s" }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: isChosen ? 700 : 500, color: isChosen ? "var(--violet)" : "var(--ink)" }}>{slot}</div>
+                          <div style={{ fontSize: 11, color: "var(--ink3)", marginTop: 2 }}>{slotVotes.length} vote{slotVotes.length !== 1 ? "s" : ""}</div>
+                        </div>
+                        <div style={{ width: 100, height: 6, borderRadius: 4, background: "var(--frost)", overflow: "hidden" }}>
+                          <div style={{ height: "100%", borderRadius: 4, background: isChosen ? "var(--violet)" : "var(--azure)", width: `${Math.min(100, slotVotes.length * 20)}%`, transition: "width .4s" }} />
+                        </div>
+                        {isChosen && <span style={{ fontSize: 12, color: "var(--violet)", fontWeight: 700 }}>✓ Your vote</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="card"><div className="card-body" style={{ color: "var(--ink3)" }}>Select a meeting from the list.</div></div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  ASSOCIATE RESEARCHER — Assign Tasks + Grade Submissions
+// ─────────────────────────────────────────────────────────────────────────────
+function ARTaskManager({ user }) {
+  const team = getTeam(user);
+  const { pushToSheets } = useContext(DataCtx);
+  const [tasks, setTasks]         = useState([]);
+  const [members, setMembers]     = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [form, setForm]           = useState({ taskTitle: "", taskDesc: "", assignedTo: "all", dueDate: "", isBonus: false });
+  const [gradeForm, setGradeForm] = useState({});
+  const [saving, setSaving]       = useState(false);
+  const [toast, setToast]         = useState("");
+
+  useEffect(() => {
+    if (!team) { setLoading(false); return; }
+    Promise.all([
+      sheetsAPI.getByTeam("TeamTasks", team.id),
+      sheetsAPI.get("Users"),
+    ]).then(([t, u]) => {
+      setTasks(t.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      if (u) setMembers(u.filter(m => (m.teamId || m.team) === team.id));
+      setLoading(false);
+    });
+  }, [team?.id]);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+
+  const assignTask = async () => {
+    if (!form.taskTitle) { showToast("Task title required."); return; }
+    setSaving(true);
+    const record = {
+      id: `T${Date.now()}`, teamId: team.id,
+      taskTitle: form.taskTitle, taskDesc: form.taskDesc,
+      assignedTo: form.assignedTo, assignedBy: user.email,
+      dueDate: form.dueDate, status: "assigned",
+      isBonus: form.isBonus ? "true" : "false",
+      createdAt: new Date().toISOString(),
+    };
+    await sheetsAPI.push("TeamTasks", record);
+    setTasks(p => [record, ...p]);
+    setForm({ taskTitle: "", taskDesc: "", assignedTo: "all", dueDate: "", isBonus: false });
+    setSaving(false);
+    showToast("Task assigned ✓");
+  };
+
+  const gradeTask = async (task) => {
+    const gf = gradeForm[task.id] || {};
+    if (!gf.score) { showToast("Enter a score first."); return; }
+    await sheetsAPI.gradeTask(task.id, gf.score, gf.feedback || "", "graded");
+    setTasks(p => p.map(t => t.id === task.id ? { ...t, status: "graded", score: gf.score, feedback: gf.feedback } : t));
+    showToast("Task graded ✓");
+  };
+
+  if (!team) return <div className="card"><div className="card-body">No team assigned.</div></div>;
+  if (loading) return <div className="card"><div className="card-body">Loading…</div></div>;
+
+  const submitted = tasks.filter(t => t.status === "submitted");
+  const assigned  = tasks.filter(t => t.status === "assigned" || t.status === "pending");
+  const graded    = tasks.filter(t => t.status === "graded");
+
+  return (
+    <div>
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "var(--jade)", color: "#fff", padding: "10px 20px", borderRadius: 10, fontWeight: 700, zIndex: 9999 }}>{toast}</div>}
+      <div className="banner" style={{ marginBottom: 20 }}>
+        <div>
+          <div className="banner-chip">Team {team.id} — Associate Researcher</div>
+          <div className="banner-title">Task Manager</div>
+          <div className="banner-sub">{team.challenge}</div>
+        </div>
+        <div className="bstats">
+          <div><div className="bstat-val">{submitted.length}</div><div className="bstat-label">To Grade</div></div>
+          <div><div className="bstat-val">{assigned.length}</div><div className="bstat-label">Assigned</div></div>
+          <div><div className="bstat-val">{graded.length}</div><div className="bstat-label">Graded</div></div>
+        </div>
+      </div>
+
+      {/* Assign task */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-header"><div className="card-title">Assign New Task</div></div>
+        <div className="card-body">
+          <div className="g2">
+            <div className="fg"><label className="flabel">Task Title</label><input className="finput" value={form.taskTitle} onChange={e => setForm(f => ({ ...f, taskTitle: e.target.value }))} /></div>
+            <div className="fg"><label className="flabel">Assign To</label>
+              <select className="finput fselect" value={form.assignedTo} onChange={e => setForm(f => ({ ...f, assignedTo: e.target.value }))}>
+                <option value="all">Whole Team</option>
+                {members.map(m => <option key={m.email} value={m.email}>{m.name || m.Name || m.email}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="fg"><label className="flabel">Description</label><textarea className="finput ftextarea" style={{ minHeight: 70 }} value={form.taskDesc} onChange={e => setForm(f => ({ ...f, taskDesc: e.target.value }))} /></div>
+          <div className="g2">
+            <div className="fg"><label className="flabel">Due Date</label><input type="date" className="finput" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div>
+            <div className="fg"><label className="flabel" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+              <input type="checkbox" checked={form.isBonus} onChange={e => setForm(f => ({ ...f, isBonus: e.target.checked }))} /> Mark as Bonus Task (+15 pts)
+            </label></div>
+          </div>
+          <button className="btn btn-p" onClick={assignTask} disabled={saving}>{saving ? "Saving…" : "Assign Task →"}</button>
+        </div>
+      </div>
+
+      {/* Grade submitted tasks */}
+      {submitted.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-header"><div className="card-title">Grade Submissions</div><span className="snav-badge warn">{submitted.length}</span></div>
+          <div className="card-body" style={{ padding: 0 }}>
+            {submitted.map((t, i) => (
+              <div key={t.id || i} style={{ padding: "16px 20px", borderBottom: "1px solid var(--frost)" }}>
+                <div style={{ display: "flex", gap: 12, marginBottom: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{t.taskTitle}</div>
+                    <div className="txt-muted" style={{ fontSize: 12 }}>By: {t.assignedTo} · Submitted {t.submittedAt?.split("T")[0]}</div>
+                    {t.submissionLink && <a href={t.submissionLink} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--azure)" }}>View submission ↗</a>}
+                    {t.submissionNote && <div style={{ fontSize: 12, padding: "6px 10px", background: "var(--frost)", borderRadius: 8, marginTop: 6 }}>{t.submissionNote}</div>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+                  <div className="fg" style={{ flex: "0 0 100px", margin: 0 }}>
+                    <label className="flabel">Score / 100</label>
+                    <input type="number" min={0} max={100} className="finput" style={{ padding: "7px 10px" }} value={gradeForm[t.id]?.score || ""} onChange={e => setGradeForm(p => ({ ...p, [t.id]: { ...p[t.id], score: e.target.value } }))} />
+                  </div>
+                  <div className="fg" style={{ flex: 1, margin: 0 }}>
+                    <label className="flabel">Feedback</label>
+                    <input className="finput" style={{ padding: "7px 10px" }} placeholder="Optional feedback…" value={gradeForm[t.id]?.feedback || ""} onChange={e => setGradeForm(p => ({ ...p, [t.id]: { ...p[t.id], feedback: e.target.value } }))} />
+                  </div>
+                  <button className="btn btn-p btn-sm" style={{ marginBottom: 1 }} onClick={() => gradeTask(t)}>Grade ✓</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Existing assigned + graded */}
+      <div className="card">
+        <div className="card-header"><div className="card-title">All Tasks</div></div>
+        <div className="card-body" style={{ padding: 0 }}>
+          {[...assigned, ...graded].map((t, i) => (
+            <div key={t.id || i} style={{ padding: "12px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{t.taskTitle} {t.isBonus === "true" && <span style={{ fontSize: 10, background: "var(--jade)18", color: "var(--jade)", padding: "2px 7px", borderRadius: 10, marginLeft: 6, fontWeight: 700 }}>BONUS</span>}</div>
+                <div className="txt-muted" style={{ fontSize: 11 }}>→ {t.assignedTo === "all" ? "Whole team" : t.assignedTo} · Due {t.dueDate || "TBD"}</div>
+              </div>
+              {t.status === "graded"
+                ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, fontWeight: 700, color: "var(--jade)" }}>{t.score}</span>
+                : <span className={`badge ${t.status === "assigned" ? "b-phase" : "b-review"}`}>{t.status}</span>
+              }
+            </div>
+          ))}
+          {[...assigned, ...graded].length === 0 && <div style={{ padding: 20, color: "var(--ink3)", fontSize: 13 }}>No tasks yet.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  REQUEST MEETING VOTE  (AR + Admin — request members vote for a slot)
+// ─────────────────────────────────────────────────────────────────────────────
+function RequestMeetingVote({ user }) {
+  // This just creates a new meeting note with votingOpen=true.
+  // Reuses MeetingNotesView with canManage=true.
+  return <MeetingNotesView user={user} />;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  EXCUSE REVIEW  (AR + Admin — approve / reject excuses)
+// ─────────────────────────────────────────────────────────────────────────────
+function ExcuseReviewView({ user }) {
+  const team = getTeam(user);
+  const [excuses, setExcuses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast]     = useState("");
+
+  useEffect(() => {
+    if (!team) { setLoading(false); return; }
+    sheetsAPI.getByTeam("ExcuseRequests", team.id).then(e => { setExcuses(e); setLoading(false); });
+  }, [team?.id]);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+
+  const decide = async (excuse, decision) => {
+    await sheetsAPI.updateByMatch("ExcuseRequests", "id", excuse.id, { status: decision, reviewedBy: user.email, reviewedAt: new Date().toISOString() });
+    setExcuses(p => p.map(e => e.id === excuse.id ? { ...e, status: decision } : e));
+    showToast(`Excuse ${decision} ✓`);
+  };
+
+  if (!team) return <div className="card"><div className="card-body">No team assigned.</div></div>;
+  if (loading) return <div className="card"><div className="card-body">Loading…</div></div>;
+
+  const pending  = excuses.filter(e => e.status === "pending");
+  const reviewed = excuses.filter(e => e.status !== "pending");
+
+  return (
+    <div>
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "var(--jade)", color: "#fff", padding: "10px 20px", borderRadius: 10, fontWeight: 700, zIndex: 9999 }}>{toast}</div>}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-header"><div className="card-title">Pending Excuses</div>{pending.length > 0 && <span className="snav-badge warn">{pending.length}</span>}</div>
+        <div className="card-body" style={{ padding: 0 }}>
+          {pending.length === 0 && <div style={{ padding: 20, color: "var(--ink3)", fontSize: 13 }}>No pending excuses.</div>}
+          {pending.map((e, i) => (
+            <div key={e.id || i} style={{ padding: "16px 20px", borderBottom: "1px solid var(--frost)" }}>
+              <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{e.memberName || e.memberEmail}</div>
+                  <div className="txt-muted" style={{ fontSize: 12 }}>{e.excuseType === "meeting" ? "Meeting absence" : "Task deadline"} — {e.targetDate}</div>
+                  <div style={{ fontSize: 13, marginTop: 6 }}>{e.reason}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button className="btn btn-p btn-sm" onClick={() => decide(e, "approved")}>✓ Approve</button>
+                <button className="btn btn-sm" style={{ background: "var(--rose)18", color: "var(--rose)", border: "1px solid var(--rose)40" }} onClick={() => decide(e, "rejected")}>✗ Reject</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {reviewed.length > 0 && (
+        <div className="card">
+          <div className="card-header"><div className="card-title">Reviewed Excuses</div></div>
+          <div className="card-body" style={{ padding: 0 }}>
+            {reviewed.map((e, i) => (
+              <div key={e.id || i} style={{ padding: "12px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{e.memberName || e.memberEmail} — {e.targetDate}</div>
+                  <div className="txt-muted" style={{ fontSize: 12 }}>{e.reason?.slice(0, 60)}{e.reason?.length > 60 ? "…" : ""}</div>
+                </div>
+                <span className={`badge ${e.status === "approved" ? "b-qual" : ""}`} style={e.status === "rejected" ? { background: "var(--rose)18", color: "var(--rose)" } : {}}>{e.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  TEAM ADMIN DASHBOARD  (same as AR + grading overview for all members)
+// ─────────────────────────────────────────────────────────────────────────────
+function TeamAdminDashboard({ user }) {
+  const team = getTeam(user);
+  const [tab, setTab] = useState("tasks");
+  const tabs = [
+    { id: "tasks",    label: "📋 Tasks" },
+    { id: "meetings", label: "📅 Meetings" },
+    { id: "excuses",  label: "📝 Excuses" },
+    { id: "grades",   label: "🏆 Grades" },
+  ];
+  return (
+    <div>
+      <div className="banner" style={{ marginBottom: 20 }}>
+        <div>
+          <div className="banner-chip">Team {team?.id || "?"} — Admin</div>
+          <div className="banner-title">Team Dashboard</div>
+          <div className="banner-sub">{team?.challenge}</div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+        {tabs.map(t => (
+          <button key={t.id} className={`tab ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>{t.label}</button>
+        ))}
+      </div>
+      {tab === "tasks"    && <ARTaskManager user={user} />}
+      {tab === "meetings" && <MeetingNotesView user={user} />}
+      {tab === "excuses"  && <ExcuseReviewView user={user} />}
+      {tab === "grades"   && <TeamGradeOverview user={user} />}
+    </div>
+  );
+}
+
+function TeamGradeOverview({ user }) {
+  const team = getTeam(user);
+  const [tasks, setTasks]       = useState([]);
+  const [meetings, setMeetings] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    if (!team) { setLoading(false); return; }
+    Promise.all([
+      sheetsAPI.getByTeam("TeamTasks",    team.id),
+      sheetsAPI.getByTeam("MeetingNotes", team.id),
+      sheetsAPI.get("Users"),
+    ]).then(([t, m, u]) => {
+      setTasks(t);
+      setMeetings(m);
+      if (u) setAllUsers(u.filter(mem => (mem.teamId || mem.team) === team.id && mem.role !== ROLES.MENTOR));
+      setLoading(false);
+    });
+  }, [team?.id]);
+
+  if (!team || loading) return <div className="card"><div className="card-body">Loading grades…</div></div>;
+
+  return (
+    <div className="card">
+      <div className="card-header"><div className="card-title">Grade Overview — Team {team.id}</div></div>
+      <div className="card-body" style={{ padding: 0 }}>
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Member</th>
+              <th>Tasks (avg)</th>
+              <th>Attendance</th>
+              <th>Bonus</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {allUsers.map(m => {
+              const myTasks       = tasks.filter(t => (t.assignedTo === m.email || t.assignedTo === "all") && t.status === "graded" && t.isBonus !== "true");
+              const myBonus       = tasks.filter(t => (t.assignedTo === m.email || t.assignedTo === "all") && t.status === "graded" && t.isBonus === "true");
+              const taskAvg       = myTasks.length ? Math.round(myTasks.reduce((a, t) => a + Number(t.score || 0), 0) / myTasks.length) : 0;
+              const bonusPts      = Math.min(15, myBonus.reduce((a, t) => a + Number(t.score || 0) * 0.15, 0));
+              const attended      = meetings.filter(mt => (mt.attendees || "").includes(m.email)).length;
+              const attendPct     = meetings.length ? Math.round((attended / meetings.length) * 100) : 0;
+              const attendScore   = Math.round(attendPct * 0.25);
+              const total         = Math.min(100, Math.round(taskAvg * 0.5 + attendScore + bonusPts));
+              return (
+                <tr key={m.email}>
+                  <td style={{ fontWeight: 600 }}>{m.name || m.Name || m.email}</td>
+                  <td><span className="mono">{taskAvg}</span><span style={{ fontSize: 11, color: "var(--ink3)", marginLeft: 4 }}>({myTasks.length} tasks)</span></td>
+                  <td><span className="mono">{attendPct}%</span></td>
+                  <td><span className="mono" style={{ color: "var(--jade)" }}>+{Math.round(bonusPts)}</span></td>
+                  <td><GradePill score={total} /></td>
+                </tr>
+              );
+            })}
+            {allUsers.length === 0 && <tr><td colSpan={5} style={{ padding: 16, color: "var(--ink3)", fontSize: 13 }}>No members found. Make sure Users sheet has teamId column.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 // ─────────────────────────────────────────────
 //  MENTOR VIEWS
 // ─────────────────────────────────────────────
@@ -4680,6 +5584,10 @@ function AppShell() {
     [ROLES.PARTICIPANT]: {
       nav: [
         { id:"dashboard",    icon:"🏠", label:"Dashboard" },
+        { id:"submit_task",  icon:"📤", label:"Submit Tasks" },
+        { id:"my_grade",     icon:"🎓", label:"My Grade" },
+        { id:"meetings",     icon:"📅", label:"Meeting Notes" },
+        { id:"excuse",       icon:"📝", label:"Submit Excuse" },
         { id:"progress",     icon:"📊", label:"My Progress" },
         { id:"training",     icon:"📚", label:"Training Modules" },
         { id:"research",     icon:"🔬", label:"Research Hub" },
@@ -4689,6 +5597,10 @@ function AppShell() {
       ],
       pages: {
         dashboard:    <ParticipantDashboard user={user}/>,
+        submit_task:  <TaskSubmissionView user={user}/>,
+        my_grade:     <MyGradeView user={user}/>,
+        meetings:     <MeetingNotesView user={user}/>,
+        excuse:       <ExcuseFormView user={user}/>,
         progress:     <ParticipantProgress user={user}/>,
         training:     <TrainingModules user={user}/>,
         research:     <ResearchHub user={user}/>,
@@ -4726,6 +5638,10 @@ function AppShell() {
         { id:"resources_mgmt", icon:"📦", label:"Resource Management", badge:"5", badgeWarn:true },
         { id:"metrics",        icon:"📈", label:"Metrics Dashboard" },
         { id:"sheets",         icon:"📊", label:"Sheets Config" },
+        { id:"team_grades",   icon:"🏆", label:"Team Grades" },
+        { id:"team_tasks",    icon:"📋", label:"Team Tasks" },
+        { id:"team_meetings", icon:"📅", label:"Team Meetings" },
+        { id:"team_excuses",  icon:"📝", label:"Team Excuses" },
         { id:"profile",        icon:"👤", label:"My Profile" },
       ],
       pages: {
@@ -4736,6 +5652,10 @@ function AppShell() {
         resources_mgmt: <AdminResourceMgmt/>,
         metrics:        <AdminMetrics/>,
         sheets:         <AdminSheetsConfig/>,
+        team_grades:    <TeamGradeOverview user={user}/>,
+        team_tasks:     <ARTaskManager user={user}/>,
+        team_meetings:  <MeetingNotesView user={user}/>,
+        team_excuses:   <ExcuseReviewView user={user}/>,
       },
       defaultPage: "dashboard",
     },
@@ -4750,6 +5670,55 @@ function AppShell() {
         dashboard:  <ProAdminDashboard/>,
         analytics:  <ProAdminDashboard/>,
         filtration: <AdminFiltration/>,
+      },
+      defaultPage: "dashboard",
+    },
+    // ─── ASSOCIATE RESEARCHER ───────────────────────────────────────────────
+    [ROLES.ASSOCIATE_RESEARCHER]: {
+      nav: [
+        { id:"dashboard",  icon:"🏠", label:"Dashboard" },
+        { id:"tasks",      icon:"📋", label:"Manage Tasks", badge:"!", badgeWarn:true },
+        { id:"meetings",   icon:"📅", label:"Meeting Notes" },
+        { id:"excuses",    icon:"📝", label:"Review Excuses" },
+        { id:"grades",     icon:"🏆", label:"Team Grades" },
+        { id:"challenges", icon:"🏥", label:"MICCAI Challenges" },
+        { id:"profile",    icon:"👤", label:"My Profile" },
+      ],
+      pages: {
+        dashboard:  <ARTaskManager user={user}/>,
+        tasks:      <ARTaskManager user={user}/>,
+        meetings:   <MeetingNotesView user={user}/>,
+        excuses:    <ExcuseReviewView user={user}/>,
+        grades:     <TeamGradeOverview user={user}/>,
+        challenges: <MICCAIChallenges user={user}/>,
+      },
+      defaultPage: "tasks",
+    },
+
+    // ─── TEAM ADMIN ─────────────────────────────────────────────────────────
+    // Same access as AR + has access to superadmin MICCAI challenge switcher.
+    // Also counted as a team member (can submit tasks, see own grades).
+    [ROLES.TEAM_ADMIN]: {
+      nav: [
+        { id:"dashboard",  icon:"🏠", label:"Dashboard" },
+        { id:"tasks",      icon:"📋", label:"Manage Tasks", badge:"!", badgeWarn:true },
+        { id:"submit",     icon:"📤", label:"My Submissions" },
+        { id:"grade",      icon:"🎓", label:"My Grade" },
+        { id:"meetings",   icon:"📅", label:"Meetings" },
+        { id:"excuses_r",  icon:"📝", label:"Review Excuses" },
+        { id:"all_grades", icon:"🏆", label:"All Grades" },
+        { id:"challenges", icon:"🏥", label:"Challenges" },
+        { id:"profile",    icon:"👤", label:"My Profile" },
+      ],
+      pages: {
+        dashboard:  <TeamAdminDashboard user={user}/>,
+        tasks:      <ARTaskManager user={user}/>,
+        submit:     <TaskSubmissionView user={user}/>,
+        grade:      <MyGradeView user={user}/>,
+        meetings:   <MeetingNotesView user={user}/>,
+        excuses_r:  <ExcuseReviewView user={user}/>,
+        all_grades: <TeamGradeOverview user={user}/>,
+        challenges: <MICCAIChallenges user={user}/>,
       },
       defaultPage: "dashboard",
     },
