@@ -1053,6 +1053,80 @@ const MICCAI_CHALLENGES = {
       "Voxel-level segmentation of non-rim APHE, non-peripheral washout, and enhancing capsules",
       "Ordinal classification of lesions into LI-RADS categories (LR-1 to LR-5)"
     ],
+    architecture: "[Phase Co-registration] → [Spatio-Temporal Fusion Network] → [Multi-Task Head: Segmentation Mask + Ordinal LR Classification]",
+    sprints: [
+      {
+        weeks: "Weeks 1–2", label: "Data Realignment & Spatial Synchronization", phase: 1,
+        tasks: {
+          mentor: ["Review alignment accuracy across all 4 phases", "Approve data preprocessing strategy", "Ensure clinical data integrity throughout pipeline"],
+          associate: ["Assist with NIfTI format verification", "Document co-registration accuracy metrics", "Set up experiment tracking (MLflow/W&B)"],
+          TM1: ["Build 4-phase NIfTI co-registration pipeline using rigid/deformable registration (ANTs/SimpleITK) to align non-contrast, arterial, portal venous, and delayed phases spatially"],
+          TM2: ["Set up 3D UNet or Swin UNETR multi-input baseline architecture"],
+          TM3: ["Implement balanced data loader addressing high ratio of HCC to normal cases"],
+          TM4: ["Establish evaluation harness measuring Dice scores for multi-class segmentation targets"],
+          TM5: ["Support TM1 in phase co-registration validation", "Verify NIfTI file integrity across 668 cases"],
+          TM6: ["Support TM2 in baseline model setup", "Research and document Swin UNETR architecture papers"],
+          TM7: ["Support TM3 in data loading and class imbalance strategies", "Literature review on HCC class distribution"],
+          TM8: ["Support TM4 in evaluation metric implementation", "Prepare data split (train/val/test) documentation"],
+          board_admin: ["Set up team repository and project management board", "Schedule weekly standups and milestone reviews", "Track task completion and send progress reports to program admins"]
+        }
+      },
+      {
+        weeks: "Weeks 3–4", label: "Spatio-Temporal Feature Fusion", phase: 2,
+        tasks: {
+          mentor: ["Audit multi-task loss weight balance to ensure gradients aren't dominated by segmentation", "Review cross-phase attention mechanism design", "Clinical validation of feature fusion approach"],
+          associate: ["Run baseline model experiments and log results", "Compare multi-phase fusion strategies in literature", "Prepare mid-sprint progress report"],
+          TM1: ["Implement spatial ROI cropping focused on liver regions to reduce GPU memory strain"],
+          TM2: ["Engineer cross-phase attention mechanisms or 3D CNN architectures capturing dynamic contrast enhancement over time (APHE and washout)"],
+          TM3: ["Build multi-task loss function combining Dice + Cross-Entropy (segmentation) with Ordinal Cross-Entropy (LI-RADS classification)"],
+          TM4: ["Set up tracking pipelines for validation metrics across both classification and segmentation tasks"],
+          TM5: ["Assist TM1 with liver ROI cropping implementation and testing"],
+          TM6: ["Assist TM2 with attention mechanism literature review and implementation support"],
+          TM7: ["Assist TM3 with loss function tuning experiments"],
+          TM8: ["Assist TM4 with metric dashboard setup and visualization"],
+          board_admin: ["Compile Week 3–4 sprint report", "Coordinate with mentor on timeline adjustments", "Ensure GPU resource requests are submitted"]
+        }
+      },
+      {
+        weeks: "Weeks 5–6", label: "Domain Generalization Tuning", phase: 3,
+        tasks: {
+          mentor: ["Perform clinical error analysis on misclassified validation cases (e.g., LR-3 vs LR-4 edge cases)", "Review domain generalization strategy", "Sign off on ablation study design"],
+          associate: ["Run ablation experiments with phase inclusion/exclusion", "Analyze inter-center performance gaps", "Document findings for paper draft"],
+          TM1: ["Inject heavy domain augmentations (contrast, intensity scaling, blur) to simulate multi-center protocol heterogeneity"],
+          TM2: ["Refine classification head to enforce strict ordinal constraints between LR-1 to LR-5 categories"],
+          TM3: ["Run ablation studies on phase inclusion (verifying model reliance on arterial vs. delayed phases)"],
+          TM4: ["Evaluate performance consistency across the four contributing public source datasets"],
+          TM5: ["Support TM1 with augmentation pipeline testing and validation"],
+          TM6: ["Support TM2 with ordinal constraint implementation"],
+          TM7: ["Support TM3 with ablation study execution and documentation"],
+          TM8: ["Support TM4 with cross-dataset evaluation scripts"],
+          board_admin: ["Update milestone tracker", "Prepare Weeks 5–6 progress report for admins", "Coordinate with associates on paper draft timeline"]
+        }
+      },
+      {
+        weeks: "Weeks 7–8", label: "Validation & Robust Inference", phase: 4,
+        tasks: {
+          mentor: ["Conduct final validation checks against simulated held-out data", "Assess domain generalizability of final model", "Sign off on Docker container and submission"],
+          associate: ["Write challenge submission report", "Prepare paper draft sections on methodology and results", "Coordinate final Docker testing"],
+          TM1: ["Develop multi-model ensemble to stabilize predictions (with TM2)"],
+          TM2: ["Co-develop ensemble with TM1; run inference optimizations (TensorRT or mixed precision)"],
+          TM3: ["Run inference speed optimizations to ensure processing completes within challenge limits"],
+          TM4: ["Package entire multi-task pipeline into Docker container meeting Codabench specifications"],
+          TM5: ["Assist TM1/TM2 with ensemble strategy evaluation"],
+          TM6: ["Run final model benchmarks and document results table"],
+          TM7: ["Assist TM3 with speed profiling and optimization"],
+          TM8: ["Assist TM4 with Docker container testing and Codabench submission"],
+          board_admin: ["Coordinate final submission checklist", "Submit to Codabench platform", "File final sprint report and prepare celebration event"]
+        }
+      }
+    ],
+    assessment: [
+      { role: "Mentor", metric: "Clinical Alignment & Structural Oversight", criteria: "Zero training deadlocks; multi-task loss architecture converges within 4 weeks; clinical logic holds across tasks" },
+      { role: "TM1", metric: "Registration Precision & Processing Latency", criteria: "Sub-voxel phase-to-phase registration alignment; preprocessing pipelines cause zero training bottlenecks" },
+      { role: "TM2", metric: "Architecture Innovation & Feature Maps", criteria: "Successful multi-phase attention tensor fusion; model captures distinct APHE and washout dynamics" },
+      { role: "TM3", metric: "Model Convergence & Loss Tuning", criteria: "Validation loss steadily decreases without overfitting; stable multi-task training progression" },
+      { role: "TM4", metric: "Metric Accuracy & Container Compliance", criteria: "Code reaches ≥95% completion rate; Docker containers validate successfully on Codabench" }
+    ]
   },
   ENDOVIS: {
     id: "ENDOVIS",
@@ -1067,6 +1141,80 @@ const MICCAI_CHALLENGES = {
       "Real-time surgical tissue tracking using infrared markers (STIR)",
       "Multi-endoscope novel view synthesis and anatomical localization"
     ],
+    architecture: "[Surgical Video Frames] → [Temporal Feature Extractor (Transformer/LSTM)] → [Dual Head: Real-time Tissue Tracking + Novel View Synthesis (NeRF/3DGS)]",
+    sprints: [
+      {
+        weeks: "Weeks 1–2", label: "Video Pipeline Initialization & Baseline", phase: 1,
+        tasks: {
+          mentor: ["Validate that frame preprocessing handles artifacts like smoke and sudden lens occlusion", "Review baseline tracking framework selection", "Clinical review of surgical workflow assumptions"],
+          associate: ["Benchmark optical flow vs SuperPoint+LightGlue tracking accuracy", "Set up video dataset access and frame extraction pipeline", "Document baseline MOTA scores"],
+          TM1: ["Develop video frame extraction, illumination correction, and specular reflection removal pipelines"],
+          TM2: ["Implement baseline real-time object tracking or feature matching framework (Optical Flow / SuperPoint + LightGlue)"],
+          TM3: ["Implement specialized loss function optimized for tracking coordinates and spatial mapping"],
+          TM4: ["Build validation scripts calculating Multi-Object Tracking Accuracy (MOTA) and structural metrics"],
+          TM5: ["Support TM1 with video preprocessing pipeline testing across all endoscope types"],
+          TM6: ["Support TM2 with feature matching baseline evaluation"],
+          TM7: ["Support TM3 with loss function literature review"],
+          TM8: ["Support TM4 with MOTA metric calculation and visualization"],
+          board_admin: ["Set up team repo and Kanban board", "Schedule weekly review sessions", "Submit initial resource requests for GPU access"]
+        }
+      },
+      {
+        weeks: "Weeks 3–4", label: "Temporal & Novel View Modeling", phase: 2,
+        tasks: {
+          mentor: ["Verify that architectural design supports target real-time FPS processing constraints", "Review temporal model selection rationale", "Check camera calibration approach"],
+          associate: ["Integrate Timesformer or 3DGS baseline implementation", "Run temporal consistency benchmarks", "Prepare mid-sprint technical report"],
+          TM1: ["Sequence frame segments into temporal blocks, ensuring synchronicity with infrared markers"],
+          TM2: ["Integrate transformer-based temporal models (Timesformer) for tissue tracking, or implement 3D Gaussian Splatting for novel view synthesis"],
+          TM3: ["Optimize multi-endoscope perspective projection matrices and camera intrinsic calibrations"],
+          TM4: ["Evaluate frame-to-frame tracking stability across highly deformable soft tissue sequences"],
+          TM5: ["Assist TM1 with temporal block sequencing and synchronization testing"],
+          TM6: ["Assist TM2 with 3DGS implementation and rendering evaluation"],
+          TM7: ["Assist TM3 with camera calibration optimization"],
+          TM8: ["Assist TM4 with deformable tissue tracking evaluation scripts"],
+          board_admin: ["Compile Week 3–4 sprint report", "Coordinate with mentor on FPS benchmark timeline", "Ensure compute resources are allocated for 3DGS training"]
+        }
+      },
+      {
+        weeks: "Weeks 5–6", label: "Robustness to Occlusion & Deformations", phase: 3,
+        tasks: {
+          mentor: ["Benchmark system tracking re-localization capability following complete target occlusion", "Review robustness test design", "Validate occlusion simulation realism"],
+          associate: ["Run comprehensive occlusion and deformation stress tests", "Analyze tracking failure modes", "Document results for paper methodology section"],
+          TM1: ["Design custom augmentations simulating tool occlusions, motion blur, and blood pooling"],
+          TM2: ["Integrate temporal memory cells or Kalman filters to preserve tracking continuity during deep tool occlusions"],
+          TM3: ["Fine-tune view synthesis rendering pipelines to reduce blur and spatial artifacts"],
+          TM4: ["Run comprehensive inference speed tests on target hardware setups"],
+          TM5: ["Assist TM1 with augmentation diversity and realism testing"],
+          TM6: ["Assist TM2 with Kalman filter integration and tuning"],
+          TM7: ["Assist TM3 with rendering artifact analysis"],
+          TM8: ["Assist TM4 with hardware benchmarking across GPU profiles"],
+          board_admin: ["Update milestone tracker with Week 5–6 results", "Prepare progress report for program admin", "Coordinate with associates on paper draft sections"]
+        }
+      },
+      {
+        weeks: "Weeks 7–8", label: "Final System Deployment", phase: 4,
+        tasks: {
+          mentor: ["Confirm tracking consistency and geometric fidelity across diverse camera perspectives", "Final sign-off on system latency and accuracy", "Review Docker submission"],
+          associate: ["Finalize challenge submission paper", "Write results and discussion sections", "Coordinate final Docker testing and submission"],
+          TM1: ["Construct temporal ensemble setups using sliding window inference strategies (with TM2)"],
+          TM2: ["Co-develop sliding window ensemble with TM1"],
+          TM3: ["Optimize memory allocation to prevent OOM errors during long video sequences"],
+          TM4: ["Finalize low-latency inference configurations and build deployment-ready Docker structures"],
+          TM5: ["Assist with ensemble evaluation and comparison"],
+          TM6: ["Run final FPS benchmarks and document results"],
+          TM7: ["Assist TM3 with memory profiling and optimization"],
+          TM8: ["Assist TM4 with Docker testing on target hardware"],
+          board_admin: ["Submit to challenge platform", "File final sprint report", "Organize team debrief session"]
+        }
+      }
+    ],
+    assessment: [
+      { role: "Mentor", metric: "Real-time Viability & Algorithmic Safety", criteria: "Tracking maintains frame rate goals without losing target during rapid instrument adjustments" },
+      { role: "TM1", metric: "Artifact Suppression & Preprocessing Speed", criteria: "High specular reflection removal rates with negligible frame-processing latency" },
+      { role: "TM2", metric: "Temporal Consistency & Spatial Novelty", criteria: "Tracking drift minimal over 1000+ frames; synthesized views resolve fine tissue textures clearly" },
+      { role: "TM3", metric: "Calibration Precision & Optimization Bounds", criteria: "Camera pose estimation error minimized; loss curves decrease consistently across dynamic deformations" },
+      { role: "TM4", metric: "Processing Throughput (FPS) & System Packaging", criteria: "System maintains target FPS; Docker container passes all pipeline tests" }
+    ]
   },
   LEARN2REG: {
     id: "LEARN2REG",
@@ -1081,6 +1229,80 @@ const MICCAI_CHALLENGES = {
       "Estimate clinically plausible deformable displacement fields (U) aligning moving scans to fixed baselines",
       "Maintain structural accuracy and intensity metric preservation post-registration"
     ],
+    architecture: "[Fixed & Moving Scans] → [Deformable Registration Network] → [Displacement Field (U)] → [Jacobian Determinant Check]",
+    sprints: [
+      {
+        weeks: "Weeks 1–2", label: "Voxel Space Alignment & Baseline", phase: 1,
+        tasks: {
+          mentor: ["Ensure inspiratory scan is strictly designated as fixed reference space across all pipelines", "Review affine pre-alignment strategy", "Validate intensity normalization approach for BMI/radiation variances"],
+          associate: ["Set up Voxelmorph or Elastix baseline registration framework", "Benchmark initial TRE with landmark annotations", "Document registration baseline metrics"],
+          TM1: ["Implement spatial affine pre-alignment routines and intensity normalization strategies adjusted for BMI/radiation variances"],
+          TM2: ["Deploy unsupervised baseline registration framework (Voxelmorph or conventional Elastix)"],
+          TM3: ["Formulate initial image similarity components (NCC for CT, Mutual Information for PET/CT)"],
+          TM4: ["Develop validation utilities measuring Target Registration Error (TRE) using anatomical landmarks"],
+          TM5: ["Support TM1 with affine alignment pipeline testing"],
+          TM6: ["Support TM2 with Voxelmorph baseline configuration"],
+          TM7: ["Support TM3 with similarity metric implementation and comparison"],
+          TM8: ["Support TM4 with TRE calculation validation scripts"],
+          board_admin: ["Set up team repository and project board", "Schedule weekly check-ins", "Submit GPU resource requests for registration training"]
+        }
+      },
+      {
+        weeks: "Weeks 3–4", label: "Deformable Field Optimization", phase: 2,
+        tasks: {
+          mentor: ["Inspect deformation fields to verify structural plausibility and rule out topological folding artifacts", "Review multi-scale architecture design", "Approve Jacobian regularization approach"],
+          associate: ["Run deformable registration experiments across large lung volume changes", "Evaluate Dice overlap on anatomical segmentations", "Prepare mid-sprint technical report"],
+          TM1: ["Build coordinate grid generation tools and transformation warp modules"],
+          TM2: ["Design multi-scale or cascade DL architecture to capture large non-linear transformations (diaphragm movement, lung volume differences)"],
+          TM3: ["Integrate Jacobian determinant regularization (det(∇U) > 0) into loss function to prevent foldings"],
+          TM4: ["Evaluate Dice overlap on transformed anatomical segmentations"],
+          TM5: ["Assist TM1 with warp module testing and grid generation"],
+          TM6: ["Assist TM2 with cascade architecture experimentation"],
+          TM7: ["Assist TM3 with Jacobian regularization tuning"],
+          TM8: ["Assist TM4 with Dice evaluation scripts across anatomical structures"],
+          board_admin: ["Compile Week 3–4 sprint report", "Coordinate compute scheduling for cascade network training", "Prepare resource usage report"]
+        }
+      },
+      {
+        weeks: "Weeks 5–6", label: "Multimodal & Multi-Center Generalization", phase: 3,
+        tasks: {
+          mentor: ["Confirm quantitative PET values are preserved post-transformation for therapy response monitoring", "Review multi-center generalization strategy", "Validate SUV preservation approach"],
+          associate: ["Run intensity-transformation experiments simulating varied scanner types", "Validate robustness across large lung volume changes (≥2L)", "Document findings for paper draft"],
+          TM1: ["Apply intensity transformations to simulate differences across varied scanner types and radiation settings"],
+          TM2: ["Adapt network to isolate and preserve quantitative SUV indices in PET data during warping"],
+          TM3: ["Fine-tune regularization hyperparameters to balance alignment accuracy against deformation smoothness"],
+          TM4: ["Validate system robustness across large lung volume changes (≥2L)"],
+          TM5: ["Assist TM1 with scanner simulation augmentation pipeline"],
+          TM6: ["Assist TM2 with SUV preservation validation"],
+          TM7: ["Assist TM3 with regularization hyperparameter sweep"],
+          TM8: ["Assist TM4 with large lung volume change evaluation"],
+          board_admin: ["Update milestone tracker", "Prepare progress report for program admin", "Coordinate with associates on paper section drafting"]
+        }
+      },
+      {
+        weeks: "Weeks 7–8", label: "Validation & Docker Integration", phase: 4,
+        tasks: {
+          mentor: ["Perform final technical review of TRE and deformation field smoothness profiles", "Sign off on Docker container submission", "Final clinical plausibility review"],
+          associate: ["Write challenge submission and paper draft", "Coordinate final Docker testing", "Submit to Codabench platform"],
+          TM1: ["Deploy multi-resolution or instance-specific optimization techniques for fine structural alignment (with TM2)"],
+          TM2: ["Co-develop instance optimization with TM1; finalize ensemble strategy"],
+          TM3: ["Profile code execution speeds to minimize total processing time per scan pair"],
+          TM4: ["Integrate validation metric tracking and build evaluation Docker container matching Codabench standards"],
+          TM5: ["Assist with final optimization evaluation"],
+          TM6: ["Run final TRE benchmarks and document results table"],
+          TM7: ["Assist TM3 with execution speed profiling"],
+          TM8: ["Assist TM4 with Codabench Docker container validation"],
+          board_admin: ["Submit final Docker container", "File sprint completion report", "Organize team retrospective session"]
+        }
+      }
+    ],
+    assessment: [
+      { role: "Mentor", metric: "Biomechanical Plausibility Review", criteria: "Zero negative Jacobian determinants; registration preserves realistic physical lung boundaries" },
+      { role: "TM1", metric: "Affine Initialization Error Rates", criteria: "Pre-alignment reduces initial structural offset by ≥50% prior to deformable steps" },
+      { role: "TM2", metric: "Transformation Accuracy Index", criteria: "TRE meets target limits; Dice scores improve across structures post-registration" },
+      { role: "TM3", metric: "Field Regularization Balance", criteria: "Minimization of folding artifacts; regularized loss components converge smoothly" },
+      { role: "TM4", metric: "Processing Latency & Container Compliance", criteria: "Code executes within clinical time limits; container validates perfectly on Codabench" }
+    ]
   },
   MRIXFIELDS: {
     id: "MRIXFIELDS",
@@ -1095,6 +1317,80 @@ const MICCAI_CHALLENGES = {
       "Reconstruct high-field equivalent structural scans from ultra-low-field inputs",
       "Develop unified, controllable field-to-field conditional synthesis framework"
     ],
+    architecture: "[Low Field Scan (0.1T)] + [Target Field Condition (7T)] → [Conditional Generative Model] → [Harmonized High-Field Volume]",
+    sprints: [
+      {
+        weeks: "Weeks 1–2", label: "Matrix Normalization & Diffusion/GAN Baselines", phase: 1,
+        tasks: {
+          mentor: ["Ensure intensity scaling methods adequately preserve structural features across differing field strengths", "Review paired dataset co-registration strategy", "Clinical review of T1w/T2w/FLAIR baseline quality"],
+          associate: ["Set up Pix2PixHD or latent diffusion baseline model", "Benchmark nRMSE/SSIM on paired data", "Document baseline image quality scores"],
+          TM1: ["Implement voxel-resampling, intensity normalization, and rigid co-registration for multi-field paired datasets"],
+          TM2: ["Set up standard conditional generative baseline (Pix2PixHD or latent diffusion model)"],
+          TM3: ["Configure standard pixel-level reconstruction and structural similarity loss functions (L1 + SSIM)"],
+          TM4: ["Create evaluation suite tracking nRMSE, SSIM, and LPIPS scores"],
+          TM5: ["Support TM1 with voxel resampling pipeline testing across field strengths"],
+          TM6: ["Support TM2 with baseline GAN/diffusion model setup"],
+          TM7: ["Support TM3 with loss function implementation and validation"],
+          TM8: ["Support TM4 with multi-metric evaluation harness"],
+          board_admin: ["Set up team repository and project board", "Schedule weekly sync with mentor", "Submit GPU resource requests for GAN training"]
+        }
+      },
+      {
+        weeks: "Weeks 3–4", label: "Controllable Field-Conditioning", phase: 2,
+        tasks: {
+          mentor: ["Verify model responds accurately to conditional field inputs without structural hallucinations", "Review AdaIN/cross-attention injection approach", "Validate field strength conditioning logic"],
+          associate: ["Test conditional synthesis across all field transition increments", "Compare AdaIN vs cross-attention field injection", "Prepare mid-sprint report"],
+          TM1: ["Build vector embedding modules to explicitly handle magnetic field strength parameters (0.1T, 1.5T, 3T, 7T)"],
+          TM2: ["Integrate cross-attention mechanisms or AdaIN to inject field-strength conditions into generative network"],
+          TM3: ["Incorporate perceptual loss (LPIPS) and adversarial loss to recover fine tissue details"],
+          TM4: ["Measure synthesis quality trends across varying field transition increments"],
+          TM5: ["Assist TM1 with field embedding module testing"],
+          TM6: ["Assist TM2 with conditional injection mechanism evaluation"],
+          TM7: ["Assist TM3 with GAN loss balancing and training stability"],
+          TM8: ["Assist TM4 with synthesis quality trend visualization"],
+          board_admin: ["Compile Week 3–4 sprint report", "Coordinate compute time for GAN training runs", "Ensure all team members have dataset access"]
+        }
+      },
+      {
+        weeks: "Weeks 5–6", label: "Anatomical Fidelity & Artifact Control", phase: 3,
+        tasks: {
+          mentor: ["Audit synthesized deep gray matter regions to ensure anatomical boundaries match target reference scans", "Review anatomical constraint network design", "Validate B0/B1 artifact simulation realism"],
+          associate: ["Run Dice overlap tracking across 14 bilateral deep gray matter nuclei", "Analyze hallucination failure modes", "Document results for paper draft"],
+          TM1: ["Apply targeted data augmentations to simulate realistic field artifacts (B0/B1 inhomogeneities and field noise)"],
+          TM2: ["Implement secondary anatomical constraint network (pre-trained segmentation) to protect deep gray matter structures"],
+          TM3: ["Integrate structural preservation terms into primary optimization objectives"],
+          TM4: ["Track Dice overlap and volume consistency across 14 bilateral deep gray matter nuclei"],
+          TM5: ["Assist TM1 with artifact simulation augmentation pipeline"],
+          TM6: ["Assist TM2 with anatomical constraint network integration"],
+          TM7: ["Assist TM3 with structural preservation loss tuning"],
+          TM8: ["Assist TM4 with deep gray matter evaluation scripts"],
+          board_admin: ["Update milestone tracker", "Prepare Weeks 5–6 progress report", "Coordinate with associates on paper methodology section"]
+        }
+      },
+      {
+        weeks: "Weeks 7–8", label: "Ensembling & Docker Deployment", phase: 4,
+        tasks: {
+          mentor: ["Sign off on final model structural fidelity, image quality metrics, and freedom from hallucinations", "Final review of all 5 challenge metrics", "Approve Synapse Docker submission"],
+          associate: ["Write challenge submission paper", "Coordinate final Docker testing on Synapse", "Submit to challenge platform"],
+          TM1: ["Deploy ensembling methods over multiple training checkpoints to reduce high-frequency reconstruction artifacts (with TM2)"],
+          TM2: ["Co-develop checkpoint ensemble with TM1"],
+          TM3: ["Apply model quantization or mixed-precision optimization for faster generation"],
+          TM4: ["Run comprehensive validation across all 5 required challenge metrics; package into Synapse-compliant Docker container"],
+          TM5: ["Assist with checkpoint ensemble evaluation"],
+          TM6: ["Run final SSIM/LPIPS/nRMSE benchmarks and document results"],
+          TM7: ["Assist TM3 with quantization and mixed-precision testing"],
+          TM8: ["Assist TM4 with Synapse container compliance testing"],
+          board_admin: ["Submit to Synapse challenge platform", "File final sprint report", "Plan team debrief and next steps"]
+        }
+      }
+    ],
+    assessment: [
+      { role: "Mentor", metric: "Hallucination Audit & Validation Review", criteria: "Structural anatomy matches reference records; generated contrast scales cleanly with input conditions" },
+      { role: "TM1", metric: "Cross-Field Co-registration Precision", criteria: "Spatial alignment errors between paired scans remain sub-voxel before processing steps" },
+      { role: "TM2", metric: "Generative Fidelity & Visual Realism", criteria: "SSIM and LPIPS metrics hit target criteria; synthesized tissue boundaries remain sharp" },
+      { role: "TM3", metric: "Loss Stability & Convergence Profile", criteria: "GAN/Diffusion training loops converge smoothly without mode collapse or gradient instability" },
+      { role: "TM4", metric: "Multi-Metric Ranking Score", criteria: "Output achieves balanced performance rankings across all 5 target evaluation metrics" }
+    ]
   },
   AUTOPET: {
     id: "AUTOPET",
@@ -1109,6 +1405,80 @@ const MICCAI_CHALLENGES = {
       "Develop interactive segmentation framework that refines whole-body lesion segmentations based on expert corrective inputs",
       "Support simulated or real clinician scribbles (clicks/masks) for iterative mask refinement"
     ],
+    architecture: "[PET/CT Volume] + [Corrective Scribbles] → [Interactive Segmentation Model] → [Refined Target Mask] ↑← [Iterative Feedback Loop]",
+    sprints: [
+      {
+        weeks: "Weeks 1–2", label: "Interactive Pipeline & Baseline Setup", phase: 1,
+        tasks: {
+          mentor: ["Validate correctness of interactive scribble generation logic relative to realistic clinical workflows", "Review SUV normalization strategy", "Ensure baseline interactive segmentation architecture is clinically appropriate"],
+          associate: ["Set up interactive 3D UNet or medical SAM baseline", "Test scribble simulation engine with synthetic prompts", "Benchmark initial Dice and FP/FN volumes"],
+          TM1: ["Implement QIBA-aligned SUV normalization and multi-modal PET/CT spatial concatenation pipelines"],
+          TM2: ["Deploy baseline interactive segmentation architecture (interactive 3D UNet or medical SAM variant)"],
+          TM3: ["Program scribble simulation engine converting false positive/negative errors into synthetic point/line prompts"],
+          TM4: ["Set up tracking infrastructure monitoring initial Dice scores alongside False Positive/Negative Volume metrics"],
+          TM5: ["Support TM1 with QIBA SUV normalization testing and validation"],
+          TM6: ["Support TM2 with interactive baseline model configuration"],
+          TM7: ["Support TM3 with scribble simulation engine testing"],
+          TM8: ["Support TM4 with interactive evaluation metric harness"],
+          board_admin: ["Set up team repo and project board", "Schedule weekly standups", "Submit GPU resource requests for whole-body PET/CT training"]
+        }
+      },
+      {
+        weeks: "Weeks 3–4", label: "Iterative Feedback Architecture", phase: 2,
+        tasks: {
+          mentor: ["Confirm model updates remain localized to targeted areas without degrading distant correct regions", "Review memory-guided module design", "Validate iterative feedback convergence behavior"],
+          associate: ["Benchmark iterative update efficiency (Dice improvement per scribble)", "Compare memory-guided vs stateless approaches", "Prepare mid-sprint report"],
+          TM1: ["Build data loading components managing multi-channel inputs (PET, CT, interaction masks) over consecutive training steps"],
+          TM2: ["Engineer memory-guided neural network modules accepting iterative click updates without losing existing correct boundaries"],
+          TM3: ["Formulate optimization function scoring both absolute segmentation accuracy and improvement rates per interaction step"],
+          TM4: ["Benchmark how rapidly the model updates and converges given variable scribble sequences"],
+          TM5: ["Assist TM1 with multi-channel data loader testing and memory efficiency"],
+          TM6: ["Assist TM2 with memory-guided module implementation"],
+          TM7: ["Assist TM3 with interactive loss function tuning"],
+          TM8: ["Assist TM4 with convergence benchmarking scripts"],
+          board_admin: ["Compile Week 3–4 sprint report", "Coordinate compute for iterative training runs", "Track team progress against 8-week timeline"]
+        }
+      },
+      {
+        weeks: "Weeks 5–6", label: "Physiological Uptake & False Positive Mitigation", phase: 3,
+        tasks: {
+          mentor: ["Assess model behavior against edge cases: low-uptake lesions vs background noise", "Review physiological uptake region isolation strategy", "Validate false positive penalty approach"],
+          associate: ["Run segmentation evaluation on lesion-free control scans", "Analyze false positive distribution across anatomical regions", "Document findings for paper draft"],
+          TM1: ["Isolate features from regions of normal physiological tracer absorption (brain, bladder, kidneys) to reduce false positives"],
+          TM2: ["Implement architectural enhancements to differentiate true lesions from normal metabolic activity under scribble guidance"],
+          TM3: ["Introduce specialized loss weighting to penalize persistent false positive volumes in normal tissues"],
+          TM4: ["Evaluate segmentation metrics on lesion-free control scans"],
+          TM5: ["Assist TM1 with physiological region feature isolation"],
+          TM6: ["Assist TM2 with metabolic activity differentiation implementation"],
+          TM7: ["Assist TM3 with false positive penalty loss tuning"],
+          TM8: ["Assist TM4 with control scan evaluation scripts"],
+          board_admin: ["Update milestone tracker", "Prepare Weeks 5–6 progress report", "Coordinate with associates on paper methodology section"]
+        }
+      },
+      {
+        weeks: "Weeks 7–8", label: "Evaluation & Interactive Containerization", phase: 4,
+        tasks: {
+          mentor: ["Validate complete system using manual interactive testing for real clinician workflow alignment", "Sign off on Docker interactive container", "Final clinical usability review"],
+          associate: ["Write challenge submission paper", "Coordinate Grand-Challenge Docker testing", "Submit to challenge platform"],
+          TM1: ["Fine-tune interaction loops to maximize metric improvement with minimal user corrective inputs (with TM2)"],
+          TM2: ["Co-optimize interaction loops with TM1"],
+          TM3: ["Verify inference cycles execute fast enough to support real-time user interactions"],
+          TM4: ["Package interactive segmentation pipeline into Docker container handling automated iterative testing on Grand-Challenge/Codabench"],
+          TM5: ["Assist with interaction loop optimization evaluation"],
+          TM6: ["Run final Dice/FP/FN benchmarks and document results"],
+          TM7: ["Assist TM3 with inference speed profiling and optimization"],
+          TM8: ["Assist TM4 with Grand-Challenge Docker automated testing"],
+          board_admin: ["Submit to Grand-Challenge platform", "File final sprint report", "Organize team debrief and celebration"]
+        }
+      }
+    ],
+    assessment: [
+      { role: "Mentor", metric: "Clinical Workflow Usability Review", criteria: "System refines masks logically according to user input; interaction behavior remains stable" },
+      { role: "TM1", metric: "SUV Normalization & Prompt Latency", criteria: "SUV values scale consistently across sites; interactive prompt parsing incurs zero visible lag" },
+      { role: "TM2", metric: "Iterative Update Efficiency Index", criteria: "Dice accuracy improves consistently with each added interaction prompt" },
+      { role: "TM3", metric: "False Positive Volume Metrics", criteria: "Continuous reduction in false positive clusters within normal anatomical structures" },
+      { role: "TM4", metric: "Container Evaluation Compliance", criteria: "Interactive execution loops pass Grand-Challenge automated verification protocols" }
+    ]
   }
 };
 
