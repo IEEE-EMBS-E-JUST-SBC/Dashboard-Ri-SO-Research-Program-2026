@@ -122,7 +122,7 @@ const sheetsAPI = {
       });
       return await r.json();
     } catch { return { status:"offline" }; }
-  }
+  },
   async getByTeam(sheet, teamId) {
     try {
       const r = await fetch(SHEETS_URL, {
