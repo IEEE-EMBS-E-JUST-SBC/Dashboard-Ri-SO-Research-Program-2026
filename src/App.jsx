@@ -524,7 +524,8 @@ function DataProvider({ children }) {
   const updateUser = (id, patch) => {
     const updated = users.map(u => u.id === id ? { ...u, ...patch } : u);
     save(updated);
-    sheetsAPI.update("Users", patch.email || id, patch);
+    const { track, challengeId, teamRole, phase, status, trackLabel, track1, track2, track3, ...safePatch } = patch;
+    sheetsAPI.update("Users", id, safePatch);
     showToast("✓ Profile updated");
   };
 
@@ -1717,6 +1718,17 @@ function SprintTaskManager({ user, challenge, sprintIndex, sprint, tasks, onTask
 function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets }) {
   const userKey = (user.teamRole || "").toLowerCase().trim();
   const userEmail = (user.email || "").toLowerCase().trim();
+
+  const isAssociate = userKey === "associate_researcher" || userKey === "associate";
+  if (isAssociate) return (
+    <div style={{padding:"32px 24px",textAlign:"center",borderRadius:16,border:"1px dashed var(--frost)",background:"var(--snow)"}}>
+      <div style={{fontSize:36,marginBottom:12}}>📊</div>
+      <div style={{fontSize:15,fontWeight:700,color:"var(--ink)",marginBottom:8}}>You assess tasks, not receive them</div>
+      <div style={{fontSize:13,color:"var(--ink3)",maxWidth:380,margin:"0 auto",lineHeight:1.7}}>
+        As Associate Researcher, you assign and review tasks for team members. Use the Sprint Plan to manage the team's work.
+      </div>
+    </div>
+  );
 
   // Member sees tasks assigned to their role or email, that are assigned/submitted/confirmed
   const myTasks = tasks.filter(t =>
