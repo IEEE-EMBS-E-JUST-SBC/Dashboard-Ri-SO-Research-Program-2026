@@ -143,7 +143,52 @@ function doPost(e) {
       return jsonResponse({ status:'error', message:'Row not found' });
     }
 
-    return jsonResponse({ status:'error', message:'Unknown action: '+action });
+    // GET BY TEAM — filter rows where teamId column matches
+    if (action === 'getByTeam') {
+      const { teamId } = body;
+      if (!teamId) return jsonResponse({ status:'error', message:'teamId required' });
+      const lastRow = ws.getLastRow();
+      const lastCol = ws.getLastColumn();
+      if (lastRow < 2 || lastCol < 1) return jsonResponse({ status:'ok', data:[] });
+      const allData = ws.getRange(1,1,lastRow,lastCol).getValues();
+      const headers = allData[0];
+      const teamCol = headers.indexOf('teamId');
+      if (teamCol === -1) return jsonResponse({ status:'ok', data:[] });
+      const rows = allData.slice(1)
+        .filter(row => String(row[teamCol]).trim() === String(teamId).trim())
+        .map(row => { const obj={}; headers.forEach((h,i)=>{ if(h) obj[h]=row[i]; }); return obj; });
+      return jsonResponse({ status:'ok', data:rows });
+    }
+
+    // VOTE SLOT — upsert a vote for a meeting slot
+    if (action === 'voteSlot') {
+      const { meetingId, teamId: voteTeam, voterEmail, slot } = body;
+      const lastRow = ws.getLastRow();
+      const lastCol = ws.getLastColumn();
+      const newRecord = { meetingId, teamId: voteTeam, voterEmail, slot, votedAt: new Date().toISOString() };
+      if (lastRow === 0 || lastCol === 0) {
+        const keys = Object.keys(newRecord);
+        ws.getRange(1,1,1,keys.length).setValues([keys]);
+        ws.getRange(2,1,1,keys.length).setValues([keys.map(k=>newRecord[k]??'')]);
+        return jsonResponse({ status:'ok', message:'Vote recorded' });
+      }
+      const allData = ws.getRange(1,1,lastRow,lastCol).getValues();
+      let headers = allData[0];
+      const missing = Object.keys(newRecord).filter(k=>headers.indexOf(k)===-1);
+      if (missing.length) { headers=[...headers,...missing]; ws.getRange(1,1,1,headers.length).setValues([headers]); }
+      const midCol = headers.indexOf('meetingId');
+      const emailCol = headers.indexOf('voterEmail');
+      for (let i=1; i<allData.length; i++) {
+        if (String(allData[i][midCol])===String(meetingId) && String(allData[i][emailCol]).trim().toLowerCase()===String(voterEmail).trim().toLowerCase()) {
+          headers.forEach((h,ci) => { if(newRecord[h]!==undefined) ws.getRange(i+1,ci+1).setValue(newRecord[h]); });
+          return jsonResponse({ status:'ok', message:'Vote updated' });
+        }
+      }
+      ws.appendRow(headers.map(h=>newRecord[h]!==undefined?newRecord[h]:''));
+      return jsonResponse({ status:'ok', message:'Vote recorded' });
+    }
+
+
   } catch(err) { return jsonResponse({ status:'error', message:err.toString() }); }
 }
 

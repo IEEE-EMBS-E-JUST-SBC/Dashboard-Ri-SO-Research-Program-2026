@@ -132,7 +132,11 @@ const sheetsAPI = {
       });
       if (!r.ok) return [];
       const json = await r.json();
-      return json?.data ?? [];
+      const data = json?.data ?? [];
+      // If backend returned results, use them. Otherwise fall back to full-sheet GET + client filter.
+      if (data.length > 0) return data;
+      const all = await this.get(sheet);
+      return (all || []).filter(row => String(row.teamId||"").trim() === String(teamId).trim());
     } catch { return []; }
   },
 
