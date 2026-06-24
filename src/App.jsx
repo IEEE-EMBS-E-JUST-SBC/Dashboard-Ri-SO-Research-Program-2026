@@ -1876,6 +1876,7 @@ function MICCAIChallenges({ user }) {
   const [animIn, setAnimIn] = useState(true);
   const [sprintTasks, setSprintTasks] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
+  const [nextMeeting, setNextMeeting] = useState(null);
 
   const challenge = MICCAI_CHALLENGES[activeChallenge];
   const userRoleKey = isMentor ? "mentor" : isAssociate ? "associate" : isAdmin ? "board_admin" : teamRole || "TM1";
@@ -1885,6 +1886,18 @@ function MICCAIChallenges({ user }) {
       if (Array.isArray(data)) setSprintTasks(data);
       setLoadingTasks(false);
     }).catch(() => setLoadingTasks(false));
+    // Load upcoming meeting for announcement banner
+    const team = getTeam(user);
+    if (team) {
+      sheetsAPI.getByTeam("MeetingNotes", team.id).then(meetings => {
+        if (Array.isArray(meetings)) {
+          const upcoming = meetings
+            .filter(m => new Date(m.meetingDate + (m.meetingTime ? "T" + m.meetingTime : "")) >= new Date())
+            .sort((a, b) => new Date(a.meetingDate) - new Date(b.meetingDate))[0];
+          if (upcoming) setNextMeeting(upcoming);
+        }
+      }).catch(() => {});
+    }
   }, []);
 
   const pushTaskToSheets = async (sheet, data, isUpdate) => {
@@ -1989,10 +2002,28 @@ function MICCAIChallenges({ user }) {
         </div>
       )}
 
+      {/* Upcoming Meeting Announcement */}
+      {nextMeeting && (
+        <div style={{marginBottom:16,padding:"14px 20px",borderRadius:14,background:"linear-gradient(135deg,#1A6DFF15,#0EA5C515)",border:"1.5px solid #1A6DFF30",display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+          <span style={{fontSize:24,flexShrink:0}}>📅</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#1A6DFF",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Upcoming Meeting</div>
+            <div style={{fontSize:14,fontWeight:700,color:"var(--ink)"}}>{nextMeeting.title}</div>
+            <div style={{fontSize:12,color:"var(--ink3)",marginTop:2}}>{nextMeeting.meetingDate}{nextMeeting.meetingTime ? ` · ${nextMeeting.meetingTime} GMT+3` : ""}</div>
+          </div>
+          {nextMeeting.meetLink && (
+            <a href={nextMeeting.meetLink} target="_blank" rel="noreferrer"
+              style={{padding:"8px 18px",borderRadius:10,background:"#1A6DFF",color:"#fff",fontSize:12,fontWeight:700,textDecoration:"none",flexShrink:0}}>
+              🎥 Join
+            </a>
+          )}
+        </div>
+      )}
+
       {/* Main Navigation Tabs */}
       <div style={{display:"flex",gap:6,background:"var(--snow)",padding:5,borderRadius:12,border:"1px solid var(--frost)",marginBottom:20,flexWrap:"wrap"}}>
         {(isAuthorized
-          ? [["overview","🎯","Overview"],["manage","📋","Manage Tasks"]]
+          ? [["overview","🎯","Overview"]]
           : [["mytasks","✅","My Tasks"]]
         ).map(([id,ic,lb]) => (
           <button key={id} className={`miccai-tab ${mainTab===id?"active":""}`} onClick={() => setMainTab(id)}>{ic} {lb}</button>
@@ -2038,43 +2069,6 @@ function MICCAIChallenges({ user }) {
       )}
 
       {/* ── TAB: MANAGE TASKS (Authorized roles only) ── */}
-      {mainTab === "manage" && isAuthorized && (
-        <div className="miccai-fadein">
-          <div style={{padding:"14px 18px",borderRadius:12,background:"#f5f3ff",border:"1px solid #5B3BF530",marginBottom:20,display:"flex",alignItems:"center",gap:12}}>
-            <span style={{fontSize:22}}>📋</span>
-            <div>
-              <div style={{fontSize:13,fontWeight:700,color:"var(--ink)"}}>Task Management — <span style={{color:"var(--violet)"}}>{challenge.name}</span></div>
-              <div style={{fontSize:12,color:"var(--ink3)"}}>Create, assign, and score tasks for each sprint milestone. Members see tasks only after you assign them.</div>
-            </div>
-          </div>
-
-          {/* Sprint selector */}
-          <div style={{display:"flex",alignItems:"center",gap:0,marginBottom:20,background:"#fff",borderRadius:14,border:"1px solid var(--frost)",padding:4,width:"fit-content",flexWrap:"wrap"}}>
-            {challenge.sprints.map((s,i) => (
-              <button key={i} onClick={() => setActiveSprint(i)}
-                style={{padding:"9px 18px",borderRadius:10,border:"none",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,transition:"all .18s",
-                  background:activeSprint===i ? phaseColors[i] : "transparent",
-                  color:activeSprint===i ? "#fff" : "var(--ink3)"}}>
-                {s.weeks}
-              </button>
-            ))}
-          </div>
-
-          {loadingTasks ? (
-            <div style={{textAlign:"center",padding:"40px",color:"var(--ink3)",fontSize:13}}>Loading tasks…</div>
-          ) : (
-            <SprintTaskManager
-              user={user}
-              challenge={challenge}
-              sprintIndex={activeSprint}
-              sprint={challenge.sprints[activeSprint]}
-              tasks={sprintTasks}
-              onTasksChange={setSprintTasks}
-              pushToSheets={pushTaskToSheets}
-            />
-          )}
-        </div>
-      )}
 
     </div>
   );
@@ -3350,219 +3344,7 @@ function TeamGradeOverview({ user }) {
         </div>
       </div>
 
-      {/* ── Quick grade summary table ── */}
-      <div className="card" style={{marginBottom:20}}>
-        <div className="card-header"><div className="card-title">Grade Summary</div><div className="card-sub">Click a member to drill down</div></div>
-        <div className="card-body" style={{padding:0}}>
-          <table className="tbl">
-            <thead>
-              <tr><th>Member</th><th>Tasks avg</th><th>Attendance</th><th>Bonus</th><th>Penalty</th><th>Total</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-              {allUsers.map(m => {
-                const s = computeScore(m);
-                const isActive = m.email === selected;
-                return (
-                  <tr key={m.email} onClick={() => setSelected(m.email)}
-                    style={{cursor:"pointer", background: isActive ? "rgba(91,59,245,.05)" : "white",
-                      borderLeft: isActive ? "3px solid var(--violet)" : "3px solid transparent"}}>
-                    <td>
-                      <div style={{display:"flex",alignItems:"center",gap:10}}>
-                        <div style={{width:32,height:32,borderRadius:"50%",background:"var(--r1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"white",flexShrink:0}}>
-                          {(m.name||m.Name||m.email).slice(0,2).toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{fontWeight:700,fontSize:13}}>{m.name||m.Name||m.email}</div>
-                          <div style={{fontSize:11,color:"var(--ink3)"}}>{m.teamRole||"member"}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td><span className="mono">{s.taskAvg}</span><span style={{fontSize:10,color:"var(--ink3)",marginLeft:4}}>({s.myTasks.length})</span></td>
-                    <td>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <div style={{width:60,height:5,borderRadius:3,background:"var(--frost)",overflow:"hidden"}}>
-                          <div style={{height:"100%",width:`${s.attendPct}%`,background:"var(--azure)",borderRadius:3}}/>
-                        </div>
-                        <span className="mono" style={{fontSize:11}}>{s.attendPct}%</span>
-                      </div>
-                    </td>
-                    <td><span style={{color:"var(--jade)",fontWeight:700,fontFamily:"'DM Mono',monospace"}}>+{s.bonusPts}</span></td>
-                    <td><span style={{color:s.penaltyPts>0?"var(--rose)":"var(--ink3)",fontFamily:"'DM Mono',monospace"}}>-{s.penaltyPts}</span></td>
-                    <td>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <div style={{width:50,height:6,borderRadius:3,background:"var(--frost)",overflow:"hidden"}}>
-                          <div style={{height:"100%",width:`${s.total}%`,background:gradeColor(s.total),borderRadius:3,transition:"width .4s"}}/>
-                        </div>
-                        <span style={{fontFamily:"'DM Mono',monospace",fontWeight:700,fontSize:14,color:gradeColor(s.total)}}>{s.total}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:`${gradeColor(s.total)}18`,color:gradeColor(s.total)}}>
-                        {gradeLabel(s.total)}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {allUsers.length === 0 && (
-                <tr><td colSpan={7} style={{padding:20,color:"var(--ink3)",fontSize:13,textAlign:"center"}}>No members found. Make sure Users sheet has teamId column filled.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
-      {/* ── Member drill-down ── */}
-      {activeMember && activeScore && (
-        <div className="card">
-          <div className="card-header">
-            <div style={{display:"flex",alignItems:"center",gap:12}}>
-              <div style={{width:40,height:40,borderRadius:"50%",background:"var(--r1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"white"}}>
-                {(activeMember.name||activeMember.Name||activeMember.email).slice(0,2).toUpperCase()}
-              </div>
-              <div>
-                <div className="card-title">{activeMember.name||activeMember.Name||activeMember.email}</div>
-                <div className="card-sub">{activeMember.email} · {activeMember.teamRole||"member"}</div>
-              </div>
-            </div>
-            {/* mini score pill */}
-            <div style={{textAlign:"center"}}>
-              <div style={{fontFamily:"'Fraunces',serif",fontSize:36,fontWeight:900,color:gradeColor(activeScore.total),lineHeight:1}}>{activeScore.total}</div>
-              <div style={{fontSize:11,color:"var(--ink3)"}}>/ 100</div>
-            </div>
-          </div>
-
-          {/* Sub-tabs */}
-          <div style={{padding:"0 20px",borderBottom:"1px solid var(--frost)",display:"flex",gap:4}}>
-            {[["grades","🎓 Grades"],["tasks","📋 Tasks"],["profile","👤 Profile"]].map(([id,label])=>(
-              <button key={id} onClick={()=>setTab(id)}
-                style={{padding:"10px 16px",border:"none",background:"none",fontSize:13,fontWeight:tab===id?700:500,
-                  color:tab===id?"var(--violet)":"var(--ink3)",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",
-                  borderBottom:tab===id?"2.5px solid var(--violet)":"2.5px solid transparent",marginBottom:-1}}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Grades tab */}
-          {tab === "grades" && (
-            <div className="card-body">
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
-                {[
-                  {label:"Task Score",  value:Math.round(activeScore.taskAvg*0.5), max:50, color:"var(--violet)", detail:`avg ${activeScore.taskAvg}/100 across ${activeScore.myTasks.length} graded tasks`},
-                  {label:"Attendance",  value:activeScore.attendScore, max:25, color:"var(--azure)",  detail:`${activeScore.attended}/${meetings.length} meetings · ${activeScore.attendPct}%`},
-                  {label:"Bonus",       value:activeScore.bonusPts,    max:15, color:"var(--jade)",   detail:`from ${activeScore.myBonus.length} bonus task(s)`},
-                  {label:"Penalties",   value:activeScore.penaltyPts,  max:10, color:"var(--rose)",   detail:`${activeScore.myExcuses.filter(e=>e.status==="rejected").length} rejected excuse(s)`},
-                ].map(({label,value,max,color,detail})=>(
-                  <div key={label} style={{padding:16,borderRadius:12,border:"1px solid var(--frost)"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                      <span style={{fontSize:13,fontWeight:600}}>{label}</span>
-                      <span style={{fontFamily:"'DM Mono',monospace",fontSize:16,fontWeight:700,color}}>{value}<span style={{fontSize:11,color:"var(--ink3)",fontWeight:400}}>/{max}</span></span>
-                    </div>
-                    <div style={{height:6,borderRadius:3,background:"var(--frost)",overflow:"hidden",marginBottom:6}}>
-                      <div style={{height:"100%",width:`${Math.min(100,(value/max)*100)}%`,background:color,borderRadius:3,transition:"width .4s"}}/>
-                    </div>
-                    <div style={{fontSize:11,color:"var(--ink3)"}}>{detail}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Excuse history */}
-              {activeScore.myExcuses.length > 0 && (
-                <div>
-                  <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Excuse History</div>
-                  {activeScore.myExcuses.map((ex,i)=>(
-                    <div key={ex.id||i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,border:"1px solid var(--frost)",marginBottom:8,fontSize:13}}>
-                      <div style={{flex:1}}>
-                        <span style={{fontWeight:600}}>{ex.excuseType==="meeting"?"📅 Meeting":"📋 Task"}</span> — {ex.targetDate}
-                        <div style={{fontSize:12,color:"var(--ink3)",marginTop:2}}>{ex.reason?.slice(0,80)}</div>
-                      </div>
-                      <span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,
-                        background:ex.status==="approved"?"#d1fae5":ex.status==="rejected"?"#fee2e2":"#fef3c7",
-                        color:ex.status==="approved"?"#065f46":ex.status==="rejected"?"#991b1b":"#92400e"}}>
-                        {ex.status}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tasks tab */}
-          {tab === "tasks" && (
-            <div className="card-body" style={{padding:0}}>
-              {activeScore.allTasks.length === 0
-                ? <div style={{padding:24,color:"var(--ink3)",fontSize:13,textAlign:"center"}}>No tasks assigned yet.</div>
-                : activeScore.allTasks.map((t,i)=>(
-                  <div key={t.id||i} style={{padding:"14px 20px",borderBottom:"1px solid var(--frost)",display:"flex",alignItems:"center",gap:12}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13,fontWeight:600}}>
-                        {t.taskTitle}
-                        {t.isBonus==="true"&&<span style={{fontSize:10,background:"#d1fae5",color:"#065f46",padding:"2px 7px",borderRadius:10,marginLeft:8,fontWeight:700}}>BONUS</span>}
-                      </div>
-                      <div style={{fontSize:11,color:"var(--ink3)",marginTop:2}}>Due: {t.dueDate||"—"} · Assigned to: {t.assignedTo==="all"?"Whole team":t.assignedTo}</div>
-                      {t.submissionLink&&<a href={t.submissionLink} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--azure)"}}>View submission ↗</a>}
-                      {t.feedback&&<div style={{fontSize:11,marginTop:4,padding:"5px 9px",background:"var(--snow)",borderRadius:7}}>💬 {t.feedback}</div>}
-                    </div>
-                    <div style={{textAlign:"center",minWidth:50}}>
-                      {t.status==="graded"
-                        ? <><div style={{fontFamily:"'DM Mono',monospace",fontSize:20,fontWeight:700,color:"var(--jade)"}}>{t.score}</div><div style={{fontSize:9,color:"var(--ink3)"}}>/ 100</div></>
-                        : <span style={{padding:"4px 10px",borderRadius:20,fontSize:10,fontWeight:700,
-                            background:t.status==="submitted"?"#fef3c7":t.status==="assigned"?"#eff6ff":"var(--frost)",
-                            color:t.status==="submitted"?"#92400e":t.status==="assigned"?"#1e40af":"var(--ink3)"}}>
-                            {t.status||"pending"}
-                          </span>
-                      }
-                    </div>
-                  </div>
-                ))
-              }
-            </div>
-          )}
-
-          {/* Profile tab */}
-          {tab === "profile" && (
-            <div className="card-body">
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-                {[
-                  ["Email",    activeMember.email],
-                  ["Role",     activeMember.teamRole||activeMember.role||"—"],
-                  ["Team",     `Team ${team.id}`],
-                  ["Track",    team.track],
-                ].map(([k,v])=>(
-                  <div key={k} style={{padding:"10px 14px",borderRadius:10,background:"var(--snow)",border:"1px solid var(--frost)"}}>
-                    <div style={{fontSize:10,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{k}</div>
-                    <div style={{fontSize:13,fontWeight:600,wordBreak:"break-all"}}>{v||"—"}</div>
-                  </div>
-                ))}
-              </div>
-              {/* Social links */}
-              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
-                {[
-                  {url:activeMember.linkedin, icon:"💼", label:"LinkedIn",  bg:"#0077B5"},
-                  {url:activeMember.github,   icon:"🐙", label:"GitHub",    bg:"#24292e"},
-                  {url:activeMember.kaggle,   icon:"🏅", label:"Kaggle",    bg:"#20BEFF"},
-                ].filter(l=>l.url).map(l=>(
-                  <a key={l.label} href={l.url} target="_blank" rel="noreferrer"
-                    style={{display:"flex",alignItems:"center",gap:7,padding:"8px 14px",borderRadius:10,background:l.bg,color:"#fff",textDecoration:"none",fontSize:13,fontWeight:700}}>
-                    {l.icon} {l.label} ↗
-                  </a>
-                ))}
-                {!activeMember.linkedin&&!activeMember.github&&!activeMember.kaggle&&(
-                  <span style={{fontSize:13,color:"var(--ink3)"}}>No profiles linked yet (member fills these in their Profile page).</span>
-                )}
-              </div>
-              {activeMember.bio && (
-                <div style={{padding:"12px 14px",background:"var(--snow)",borderRadius:10,border:"1px solid var(--frost)",fontSize:13,color:"var(--ink2)",lineHeight:1.7}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:.5,marginBottom:6}}>Bio</div>
-                  {activeMember.bio}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
