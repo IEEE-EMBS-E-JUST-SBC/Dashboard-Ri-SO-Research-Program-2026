@@ -2015,28 +2015,6 @@ function MICCAIChallenges({ user }) {
             ))}
           </div>
 
-          {/* 8-Week Timeline Visual */}
-          <div className="miccai-card" style={{padding:24}}>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:20}}>8-Week Sprint Timeline</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
-              {challenge.sprints.map((s,i) => (
-                <div key={i} onClick={() => { setActiveSprint(i); setMainTab("sprints"); }}
-                  style={{padding:16,borderRadius:14,border:`2px solid ${phaseColors[i]}30`,background:`${phaseColors[i]}08`,cursor:"pointer",transition:"all .2s"}}
-                  onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.borderColor=phaseColors[i]+"80";}}
-                  onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.borderColor=phaseColors[i]+"30";}}>
-                  <div style={{fontSize:11,fontWeight:700,color:phaseColors[i],letterSpacing:.5,marginBottom:6}}>{s.weeks}</div>
-                  <div style={{fontSize:13,fontWeight:700,color:"var(--ink)",lineHeight:1.3,marginBottom:8}}>{s.label}</div>
-                  <div style={{fontSize:11,color:"var(--ink3)"}}>
-                    {Object.values(s.tasks).flat().length} total tasks
-                  </div>
-                  <div style={{marginTop:10,height:4,borderRadius:3,background:`${phaseColors[i]}20`}}>
-                    <div style={{height:"100%",width:`${(i+1)*25}%`,background:phaseColors[i],borderRadius:3,transition:"width .5s"}} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
         </div>
       )}
 
@@ -2482,12 +2460,12 @@ function MyGradeView({ user }) {
   const taskAvg       = submittedReg.length
     ? Math.round(submittedReg.reduce((a, t) => a + Number(t.score || 0), 0) / submittedReg.length)
     : 0;
-  const bonusTotal    = Math.min(15, bonusTasks.filter(t => t.status === "graded").reduce((a, t) => a + Number(t.score || 0) * 0.15, 0));
+  const bonusTotal    = bonusTasks.filter(t => t.status === "graded").reduce((a, t) => a + Number(t.score || 0), 0);
   const attendedCount = meetings.filter(m => (m.attendees || "").includes(user.email)).length;
   const attendancePct = meetings.length ? Math.round((attendedCount / meetings.length) * 100) : 0;
   const attendanceScore = Math.round(attendancePct * 0.25);
   const penaltyScore  = 0; // admins set this; shown from TeamGrades sheet
-  const totalScore    = Math.min(100, Math.max(0, taskAvg * 0.5 + attendanceScore + bonusTotal - penaltyScore));
+  const totalScore    = Math.min(100, Math.max(0, Math.round(taskAvg * 0.75 + attendanceScore - penaltyScore))) + bonusTotal;
 
   return (
     <div>
@@ -2756,15 +2734,18 @@ function MeetingNotesView({ user }) {
   const team = getTeam(user);
   const isAR    = user.teamRole === "associate_researcher" || user.teamRole === "associate";
   const isAdmin = user.teamRole === "team_admin" || user.role === ROLES.SUPERADMIN || user.role === ROLES.TEAM_ADMIN;
-  const canManage = isAR || isAdmin;
+  const isMentor = user.role === ROLES.MENTOR;
+  const canManage = isAR || isAdmin || isMentor;
 
   const [meetings, setMeetings]   = useState([]);
   const [votes, setVotes]         = useState([]);
   const [loading, setLoading]     = useState(true);
   const [selected, setSelected]   = useState(null);
-  const [newForm, setNewForm]     = useState({ title: "", date: "", time: "", meetLink: "", notes: "", actionItems: "", votingOpen: false, votingSlots: "" });  const [showCreate, setShowCreate] = useState(false);
+  const [newForm, setNewForm]     = useState({ title: "", date: "", time: "", meetLink: "", attendanceSheet: "", recording: "", minutesFile: "", notes: "", actionItems: "", votingOpen: false, votingSlots: "" });
+  const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving]       = useState(false);
   const [toast, setToast]         = useState("");
+  const [editingLinks, setEditingLinks] = useState({});
 
   useEffect(() => {
     if (!team) { setLoading(false); return; }
@@ -2788,6 +2769,9 @@ function MeetingNotesView({ user }) {
       id: `MTG${Date.now()}`, teamId: team.id,
       meetingDate: newForm.date, meetingTime: newForm.time,
       meetLink: newForm.meetLink, title: newForm.title,
+      attendanceSheet: newForm.attendanceSheet || "",
+      recording: newForm.recording || "",
+      minutesFile: newForm.minutesFile || "",
       notes: newForm.notes, actionItems: newForm.actionItems,
       attendees: "", votingOpen: newForm.votingOpen ? "true" : "false",
       votingSlots: newForm.votingSlots, createdBy: user.email,
@@ -2797,7 +2781,7 @@ function MeetingNotesView({ user }) {
     setMeetings(p => [record, ...p]);
     setSelected(record.id);
     setShowCreate(false);
-    setNewForm({ title: "", date: "", notes: "", actionItems: "", votingOpen: false, votingSlots: "" });
+    setNewForm({ title: "", date: "", time: "", meetLink: "", attendanceSheet: "", recording: "", minutesFile: "", notes: "", actionItems: "", votingOpen: false, votingSlots: "" });
     setSaving(false);
     showToast("Meeting note saved ✓");
   };
@@ -2861,6 +2845,18 @@ function MeetingNotesView({ user }) {
                   <input className="finput" style={{paddingLeft:34}} placeholder="https://meet.google.com/..." value={newForm.meetLink} onChange={e => setNewForm(f => ({ ...f, meetLink: e.target.value }))} />
                 </div>
               </div>
+              <div className="fg">
+                <label className="flabel">📋 Attendance Sheet Link</label>
+                <input className="finput" placeholder="Google Sheet or Drive link..." value={newForm.attendanceSheet} onChange={e=>setNewForm(f=>({...f,attendanceSheet:e.target.value}))} />
+              </div>
+              <div className="fg">
+                <label className="flabel">🎬 Recording Link</label>
+                <input className="finput" placeholder="Google Drive / YouTube link..." value={newForm.recording} onChange={e=>setNewForm(f=>({...f,recording:e.target.value}))} />
+              </div>
+              <div className="fg">
+                <label className="flabel">📄 Minutes File Link</label>
+                <input className="finput" placeholder="Google Doc (agenda, discussion, action plan)..." value={newForm.minutesFile} onChange={e=>setNewForm(f=>({...f,minutesFile:e.target.value}))} />
+              </div>
               <div className="fg"><label className="flabel">Meeting Notes</label><textarea className="finput ftextarea" style={{ minHeight: 70 }} value={newForm.notes} onChange={e => setNewForm(f => ({ ...f, notes: e.target.value }))} /></div>
               <div className="fg"><label className="flabel">Action Items (one per line)</label><textarea className="finput ftextarea" style={{ minHeight: 50 }} value={newForm.actionItems} onChange={e => setNewForm(f => ({ ...f, actionItems: e.target.value }))} /></div>
               <div className="fg">
@@ -2920,6 +2916,58 @@ function MeetingNotesView({ user }) {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Meeting Resources */}
+            <div className="card" style={{marginBottom:16}}>
+              <div className="card-header">
+                <div className="card-title">Meeting Resources</div>
+                {canManage && <span style={{fontSize:11,color:"var(--ink3)"}}>Only admin / AR / mentor can edit</span>}
+              </div>
+              <div className="card-body" style={{display:"grid",gap:12}}>
+                {[
+                  {key:"attendanceSheet", icon:"📋", label:"Attendance Sheet", placeholder:"Google Sheet or Drive link..."},
+                  {key:"recording",       icon:"🎬", label:"Recording",        placeholder:"Google Drive / YouTube link..."},
+                  {key:"minutesFile",     icon:"📄", label:"Minutes File",     placeholder:"Google Doc (agenda, discussion, action plan)..."},
+                ].map(({key,icon,label,placeholder}) => {
+                  const val = activeMeeting[key] || "";
+                  const editKey = activeMeeting.id + "_" + key;
+                  const isEditing = editingLinks[editKey] !== undefined;
+                  const linkVal = isEditing ? editingLinks[editKey] : val;
+                  const startEdit = () => setEditingLinks(p=>({...p,[editKey]:val}));
+                  const cancelEdit = () => setEditingLinks(p=>{const n={...p};delete n[editKey];return n;});
+                  const saveLink = async () => {
+                    await sheetsAPI.updateByMatch("MeetingNotes","id",activeMeeting.id,{[key]:linkVal});
+                    setMeetings(p=>p.map(m=>m.id===activeMeeting.id?{...m,[key]:linkVal}:m));
+                    cancelEdit();
+                    showToast("Link saved ✓");
+                  };
+                  return (
+                    <div key={key} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,border:"1px solid var(--frost)",background:"var(--snow)"}}>
+                      <span style={{fontSize:20,flexShrink:0}}>{icon}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",marginBottom:3}}>{label}</div>
+                        {isEditing ? (
+                          <div style={{display:"flex",gap:8}}>
+                            <input className="finput" style={{flex:1,fontSize:12}} value={linkVal} onChange={e=>setEditingLinks(p=>({...p,[editKey]:e.target.value}))} placeholder={placeholder} autoFocus />
+                            <button className="btn btn-p btn-sm" onClick={saveLink}>Save</button>
+                            <button className="btn btn-sm" onClick={cancelEdit}>Cancel</button>
+                          </div>
+                        ) : val ? (
+                          <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                            <a href={val} target="_blank" rel="noreferrer" style={{fontSize:12,color:"var(--violet)",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{val}</a>
+                            {canManage && <button className="btn btn-sm" style={{fontSize:10,padding:"2px 8px",flexShrink:0}} onClick={startEdit}>Edit</button>}
+                          </div>
+                        ) : canManage ? (
+                          <button className="btn btn-sm" style={{fontSize:11}} onClick={startEdit}>+ Add link</button>
+                        ) : (
+                          <span style={{fontSize:12,color:"var(--ink3)"}}>Not uploaded yet</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -3269,13 +3317,13 @@ function TeamGradeOverview({ user }) {
     const myTasks    = tasks.filter(t => (t.assignedTo === m.email || t.assignedTo === "all") && t.status === "graded" && t.isBonus !== "true");
     const myBonus    = tasks.filter(t => (t.assignedTo === m.email || t.assignedTo === "all") && t.status === "graded" && t.isBonus === "true");
     const taskAvg    = myTasks.length ? Math.round(myTasks.reduce((a, t) => a + Number(t.score || 0), 0) / myTasks.length) : 0;
-    const bonusPts   = Math.min(15, myBonus.reduce((a, t) => a + Number(t.score || 0) * 0.15, 0));
+    const bonusPts   = myBonus.reduce((a, t) => a + Number(t.score || 0), 0);
     const attended   = meetings.filter(mt => (mt.attendees || "").includes(m.email)).length;
     const attendPct  = meetings.length ? Math.round((attended / meetings.length) * 100) : 0;
     const attendScore= Math.round(attendPct * 0.25);
     const myExcuses  = excuses.filter(e => e.memberEmail?.toLowerCase() === m.email?.toLowerCase());
     const penaltyPts = myExcuses.filter(e => e.status === "rejected").length * 2;
-    const total      = Math.min(100, Math.max(0, Math.round(taskAvg * 0.5 + attendScore + bonusPts - penaltyPts)));
+    const total      = Math.min(100, Math.max(0, Math.round(taskAvg * 0.75 + attendScore - penaltyPts))) + bonusPts;
     return { taskAvg, bonusPts: Math.round(bonusPts), attendPct, attendScore, penaltyPts, total,
       myTasks, myBonus, attended, allTasks: tasks.filter(t => t.assignedTo === m.email || t.assignedTo === "all"), myExcuses };
   };
