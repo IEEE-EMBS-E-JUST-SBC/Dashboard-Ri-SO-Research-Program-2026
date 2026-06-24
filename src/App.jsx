@@ -1734,12 +1734,12 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
     </div>
   );
 
-  // Member sees tasks assigned to their role or email, that are assigned/submitted/confirmed
-  const myTasks = tasks.filter(t =>
-    t.challengeId === challenge.id &&
-    t.status !== "draft" &&
-    (t.assignedTo.toLowerCase().includes(userKey) || t.assignedTo.toLowerCase().includes(userEmail))
-  );
+  // Member sees tasks assigned to them, their role, or "all" — assigned/submitted/confirmed
+  const myTasks = tasks.filter(t => {
+    if (t.status === "draft") return false;
+    const at = (t.assignedTo || "").toLowerCase().trim();
+    return at === "all" || at === userEmail || at === userKey || at.includes(userEmail);
+  });
 
   const [fileLinks, setFileLinks] = useState({});
   const [submitting, setSubmitting] = useState(null);
@@ -1749,7 +1749,7 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
     if (!link.trim()) return;
     setSubmitting(task.id);
     const updated = { ...task, status:"submitted", fileLink: link, submittedAt: new Date().toISOString() };
-    await pushToSheets("SprintTasks", updated, true);
+    await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { status: "submitted", fileLink: link, submittedAt: updated.submittedAt });
     onTasksChange(prev => prev.map(t => t.id === task.id ? updated : t));
     setSubmitting(null);
   };
@@ -1770,12 +1770,17 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
     );
   }
 
-  // Group by sprint
-  const bySprint = [0,1,2,3].map(si => ({
-    sprint: challenge.sprints[si],
-    si,
-    tasks: myTasks.filter(t => t.sprintIndex === si)
-  })).filter(g => g.tasks.length > 0);
+  // Group by sprint; tasks without sprintIndex go into an "All Tasks" bucket
+  const sprintedTasks = myTasks.filter(t => t.sprintIndex !== undefined && t.sprintIndex !== null && t.sprintIndex !== "");
+  const unsprintedTasks = myTasks.filter(t => t.sprintIndex === undefined || t.sprintIndex === null || t.sprintIndex === "");
+  const bySprint = [
+    ...([0,1,2,3].map(si => ({
+      sprint: challenge.sprints?.[si] || { weeks: `Sprint ${si+1}` },
+      si,
+      tasks: sprintedTasks.filter(t => String(t.sprintIndex) === String(si))
+    })).filter(g => g.tasks.length > 0)),
+    ...(unsprintedTasks.length > 0 ? [{ sprint: { weeks: "Assigned Tasks" }, si: "all", tasks: unsprintedTasks }] : [])
+  ];
 
   return (
     <div>
@@ -1793,15 +1798,15 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
                 <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:10}}>
                   <div>
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                      <span style={{fontSize:14,fontWeight:700,color:"var(--ink)"}}>{task.title}</span>
+                      <span style={{fontSize:14,fontWeight:700,color:"var(--ink)"}}>{task.title || task.taskTitle}</span>
                       <span style={{fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,background:`${statusColor[task.status]}15`,color:statusColor[task.status],border:`1px solid ${statusColor[task.status]}30`}}>
                         {statusLabel[task.status]}
                       </span>
                     </div>
-                    {task.description && <div style={{fontSize:13,color:"var(--ink2)",lineHeight:1.6,marginBottom:6}}>{task.description}</div>}
+                    {(task.description || task.taskDesc) && <div style={{fontSize:13,color:"var(--ink2)",lineHeight:1.6,marginBottom:6}}>{task.description || task.taskDesc}</div>}
                     {task.notes && <div style={{fontSize:12,color:"var(--ink3)",padding:"6px 10px",background:"var(--snow)",borderRadius:7,marginBottom:6}}>💡 {task.notes}</div>}
                     <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-                      {task.deadline && <span style={{fontSize:11,color:"var(--ink3)"}}>📅 Due: {task.deadline}</span>}
+                      {(task.deadline || task.dueDate) && <span style={{fontSize:11,color:"var(--ink3)"}}>📅 Due: {task.deadline || task.dueDate}</span>}
                     </div>
                   </div>
                   {task.status === "confirmed" && task.score && (
@@ -1886,7 +1891,9 @@ function MICCAIChallenges({ user }) {
   const userRoleKey = isMentor ? "mentor" : isAssociate ? "associate" : isAdmin ? "board_admin" : teamRole || "TM1";
 
   useEffect(() => {
-    sheetsAPI.get("SprintTasks").then(data => {
+    const team = getTeam(user);
+    const teamId = team?.id;
+    (teamId ? sheetsAPI.getByTeam("TeamTasks", teamId) : sheetsAPI.get("TeamTasks")).then(data => {
       if (Array.isArray(data)) setSprintTasks(data);
       setLoadingTasks(false);
     }).catch(() => setLoadingTasks(false));
