@@ -2081,6 +2081,17 @@ function MICCAIChallenges({ user }) {
       {/* ── TAB: SPRINT PLAN ── */}
       {mainTab === "sprints" && (
         <div className="miccai-fadein">
+          {/* Reference plan notice */}
+          <div style={{padding:"12px 18px",borderRadius:12,background:"#fffbeb",border:"1px solid #fde68a",marginBottom:20,display:"flex",alignItems:"center",gap:12,fontSize:13,color:"#92400E"}}>
+            <span style={{fontSize:20}}>📋</span>
+            <div>
+              <strong>Reference Plan</strong> — This shows the suggested task structure for each sprint. 
+              {isAuthorized
+                ? <span> Use the <strong>Manage Tasks</strong> tab to create and assign the actual tasks to your team members.</span>
+                : <span> Your AR / Admin will assign your actual tasks in the <strong>My Tasks</strong> tab.</span>
+              }
+            </div>
+          </div>
           {/* Sprint Selector */}
           <div style={{display:"flex",alignItems:"center",gap:0,marginBottom:20,background:"#fff",borderRadius:14,border:"1px solid var(--frost)",padding:4,width:"fit-content"}}>
             {challenge.sprints.map((s,i) => (
@@ -2938,8 +2949,7 @@ function MeetingNotesView({ user }) {
   const [votes, setVotes]         = useState([]);
   const [loading, setLoading]     = useState(true);
   const [selected, setSelected]   = useState(null);
-  const [newForm, setNewForm]     = useState({ title: "", date: "", notes: "", actionItems: "", votingOpen: false, votingSlots: "" });
-  const [showCreate, setShowCreate] = useState(false);
+  const [newForm, setNewForm]     = useState({ title: "", date: "", time: "", meetLink: "", notes: "", actionItems: "", votingOpen: false, votingSlots: "" });  const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving]       = useState(false);
   const [toast, setToast]         = useState("");
 
@@ -2963,7 +2973,8 @@ function MeetingNotesView({ user }) {
     setSaving(true);
     const record = {
       id: `MTG${Date.now()}`, teamId: team.id,
-      meetingDate: newForm.date, title: newForm.title,
+      meetingDate: newForm.date, meetingTime: newForm.time,
+      meetLink: newForm.meetLink, title: newForm.title,
       notes: newForm.notes, actionItems: newForm.actionItems,
       attendees: "", votingOpen: newForm.votingOpen ? "true" : "false",
       votingSlots: newForm.votingSlots, createdBy: user.email,
@@ -3007,7 +3018,12 @@ function MeetingNotesView({ user }) {
             <div className="banner-title">{nextMeeting.title}</div>
             <div className="banner-sub">{nextMeeting.meetingDate} · Team {team.id} — {team.meeting}</div>
           </div>
-          <a href={`https://calendar.google.com/calendar/r/eventedit?text=${encodeURIComponent(nextMeeting.title)}&dates=${nextMeeting.meetingDate.replace(/-/g,"")}/${nextMeeting.meetingDate.replace(/-/g,"")}`} target="_blank" rel="noreferrer" className="btn btn-p" style={{ alignSelf: "center" }}>Add to Calendar ↗</a>
+          <div style={{display:"flex",gap:10,alignSelf:"center",flexWrap:"wrap"}}>
+            {nextMeeting.meetLink && (
+              <a href={nextMeeting.meetLink} target="_blank" rel="noreferrer" className="btn btn-p">🎥 Join Meeting</a>
+            )}
+            <a href={`https://calendar.google.com/calendar/r/eventedit?text=${encodeURIComponent(nextMeeting.title)}&dates=${nextMeeting.meetingDate.replace(/-/g,"")}/${nextMeeting.meetingDate.replace(/-/g,"")}`} target="_blank" rel="noreferrer" className="btn btn-p" style={{background:"rgba(255,255,255,.2)",backdropFilter:"blur(4px)"}}>📅 Add to Calendar</a>
+          </div>
         </div>
       )}
 
@@ -3021,8 +3037,18 @@ function MeetingNotesView({ user }) {
           {showCreate && canManage && (
             <div className="card-body" style={{ borderBottom: "1px solid var(--frost)" }}>
               <div className="fg"><label className="flabel">Title</label><input className="finput" value={newForm.title} onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))} /></div>
-              <div className="fg"><label className="flabel">Date</label><input type="date" className="finput" value={newForm.date} onChange={e => setNewForm(f => ({ ...f, date: e.target.value }))} /></div>
-              <div className="fg"><label className="flabel">Notes</label><textarea className="finput ftextarea" style={{ minHeight: 70 }} value={newForm.notes} onChange={e => setNewForm(f => ({ ...f, notes: e.target.value }))} /></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div className="fg"><label className="flabel">Date</label><input type="date" className="finput" value={newForm.date} onChange={e => setNewForm(f => ({ ...f, date: e.target.value }))} /></div>
+                <div className="fg"><label className="flabel">Time (GMT+3)</label><input type="time" className="finput" value={newForm.time} onChange={e => setNewForm(f => ({ ...f, time: e.target.value }))} /></div>
+              </div>
+              <div className="fg">
+                <label className="flabel">Google Meet / Zoom Link</label>
+                <div style={{position:"relative"}}>
+                  <span style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",fontSize:16}}>🎥</span>
+                  <input className="finput" style={{paddingLeft:34}} placeholder="https://meet.google.com/..." value={newForm.meetLink} onChange={e => setNewForm(f => ({ ...f, meetLink: e.target.value }))} />
+                </div>
+              </div>
+              <div className="fg"><label className="flabel">Meeting Notes</label><textarea className="finput ftextarea" style={{ minHeight: 70 }} value={newForm.notes} onChange={e => setNewForm(f => ({ ...f, notes: e.target.value }))} /></div>
               <div className="fg"><label className="flabel">Action Items (one per line)</label><textarea className="finput ftextarea" style={{ minHeight: 50 }} value={newForm.actionItems} onChange={e => setNewForm(f => ({ ...f, actionItems: e.target.value }))} /></div>
               <div className="fg">
                 <label className="flabel" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
@@ -3055,7 +3081,15 @@ function MeetingNotesView({ user }) {
               <div className="card-header">
                 <div>
                   <div className="card-title">{activeMeeting.title}</div>
-                  <div className="card-sub">{activeMeeting.meetingDate} · Team {team.id}</div>
+                  <div className="card-sub">
+                    {activeMeeting.meetingDate}{activeMeeting.meetingTime ? ` · ${activeMeeting.meetingTime} GMT+3` : ""} · Team {team.id}
+                    {activeMeeting.meetLink && (
+                      <a href={activeMeeting.meetLink} target="_blank" rel="noreferrer"
+                        style={{marginLeft:12,display:"inline-flex",alignItems:"center",gap:5,padding:"3px 12px",borderRadius:20,background:"var(--violet)",color:"white",fontSize:11,fontWeight:700,textDecoration:"none"}}>
+                        🎥 Join Meeting
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="card-body">
@@ -3388,62 +3422,282 @@ function TeamGradeOverview({ user }) {
   const [tasks, setTasks]       = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+  const [excuses, setExcuses]   = useState([]);
   const [loading, setLoading]   = useState(true);
+  const [selected, setSelected] = useState(null);  // selected member email
+  const [tab, setTab]           = useState("grades"); // grades | tasks | profile
 
   useEffect(() => {
     if (!team) { setLoading(false); return; }
     Promise.all([
-      sheetsAPI.getByTeam("TeamTasks",    team.id),
-      sheetsAPI.getByTeam("MeetingNotes", team.id),
+      sheetsAPI.getByTeam("TeamTasks",      team.id),
+      sheetsAPI.getByTeam("MeetingNotes",   team.id),
+      sheetsAPI.getByTeam("ExcuseRequests", team.id),
       sheetsAPI.get("Users"),
-    ]).then(([t, m, u]) => {
-      setTasks(t);
-      setMeetings(m);
-      if (u) setAllUsers(u.filter(mem => (mem.teamId || mem.team) === team.id && mem.role !== ROLES.MENTOR));
+    ]).then(([t, m, ex, u]) => {
+      setTasks(t || []);
+      setMeetings(m || []);
+      setExcuses(ex || []);
+      const members = (u || []).filter(mem => (mem.teamId || mem.team) === team.id);
+      setAllUsers(members);
+      if (members.length > 0) setSelected(members[0].email);
       setLoading(false);
     });
   }, [team?.id]);
 
-  if (!team || loading) return <div className="card"><div className="card-body">Loading grades…</div></div>;
+  if (!team) return <div className="card"><div className="card-body">No team assigned.</div></div>;
+  if (loading) return <div className="card"><div className="card-body" style={{padding:40,textAlign:"center",color:"var(--ink3)"}}>Loading team data…</div></div>;
+
+  const computeScore = (m) => {
+    const myTasks    = tasks.filter(t => (t.assignedTo === m.email || t.assignedTo === "all") && t.status === "graded" && t.isBonus !== "true");
+    const myBonus    = tasks.filter(t => (t.assignedTo === m.email || t.assignedTo === "all") && t.status === "graded" && t.isBonus === "true");
+    const taskAvg    = myTasks.length ? Math.round(myTasks.reduce((a, t) => a + Number(t.score || 0), 0) / myTasks.length) : 0;
+    const bonusPts   = Math.min(15, myBonus.reduce((a, t) => a + Number(t.score || 0) * 0.15, 0));
+    const attended   = meetings.filter(mt => (mt.attendees || "").includes(m.email)).length;
+    const attendPct  = meetings.length ? Math.round((attended / meetings.length) * 100) : 0;
+    const attendScore= Math.round(attendPct * 0.25);
+    const myExcuses  = excuses.filter(e => e.memberEmail?.toLowerCase() === m.email?.toLowerCase());
+    const penaltyPts = myExcuses.filter(e => e.status === "rejected").length * 2;
+    const total      = Math.min(100, Math.max(0, Math.round(taskAvg * 0.5 + attendScore + bonusPts - penaltyPts)));
+    return { taskAvg, bonusPts: Math.round(bonusPts), attendPct, attendScore, penaltyPts, total,
+      myTasks, myBonus, attended, allTasks: tasks.filter(t => t.assignedTo === m.email || t.assignedTo === "all"), myExcuses };
+  };
+
+  const activeMember = allUsers.find(m => m.email === selected);
+  const activeScore  = activeMember ? computeScore(activeMember) : null;
+
+  const gradeColor = (s) => s >= 85 ? "var(--jade)" : s >= 65 ? "var(--amber)" : "var(--rose)";
+  const gradeLabel = (s) => s >= 85 ? "Excellent" : s >= 65 ? "On Track" : "Needs Work";
 
   return (
-    <div className="card">
-      <div className="card-header"><div className="card-title">Grade Overview — Team {team.id}</div></div>
-      <div className="card-body" style={{ padding: 0 }}>
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>Member</th>
-              <th>Tasks (avg)</th>
-              <th>Attendance</th>
-              <th>Bonus</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {allUsers.map(m => {
-              const myTasks       = tasks.filter(t => (t.assignedTo === m.email || t.assignedTo === "all") && t.status === "graded" && t.isBonus !== "true");
-              const myBonus       = tasks.filter(t => (t.assignedTo === m.email || t.assignedTo === "all") && t.status === "graded" && t.isBonus === "true");
-              const taskAvg       = myTasks.length ? Math.round(myTasks.reduce((a, t) => a + Number(t.score || 0), 0) / myTasks.length) : 0;
-              const bonusPts      = Math.min(15, myBonus.reduce((a, t) => a + Number(t.score || 0) * 0.15, 0));
-              const attended      = meetings.filter(mt => (mt.attendees || "").includes(m.email)).length;
-              const attendPct     = meetings.length ? Math.round((attended / meetings.length) * 100) : 0;
-              const attendScore   = Math.round(attendPct * 0.25);
-              const total         = Math.min(100, Math.round(taskAvg * 0.5 + attendScore + bonusPts));
-              return (
-                <tr key={m.email}>
-                  <td style={{ fontWeight: 600 }}>{m.name || m.Name || m.email}</td>
-                  <td><span className="mono">{taskAvg}</span><span style={{ fontSize: 11, color: "var(--ink3)", marginLeft: 4 }}>({myTasks.length} tasks)</span></td>
-                  <td><span className="mono">{attendPct}%</span></td>
-                  <td><span className="mono" style={{ color: "var(--jade)" }}>+{Math.round(bonusPts)}</span></td>
-                  <td><GradePill score={total} /></td>
-                </tr>
-              );
-            })}
-            {allUsers.length === 0 && <tr><td colSpan={5} style={{ padding: 16, color: "var(--ink3)", fontSize: 13 }}>No members found. Make sure Users sheet has teamId column.</td></tr>}
-          </tbody>
-        </table>
+    <div>
+      {/* ── Banner ── */}
+      <div className="banner" style={{marginBottom:20}}>
+        <div>
+          <div className="banner-chip">Team {team.id} — {team.track}</div>
+          <div className="banner-title">Team Overview</div>
+          <div className="banner-sub">{team.challenge}</div>
+        </div>
+        <div className="bstats">
+          <div><div className="bstat-val">{allUsers.length}</div><div className="bstat-label">Members</div></div>
+          <div><div className="bstat-val">{tasks.filter(t=>t.status==="submitted").length}</div><div className="bstat-label">To Grade</div></div>
+          <div><div className="bstat-val">{excuses.filter(e=>e.status==="pending").length}</div><div className="bstat-label">Excuses</div></div>
+        </div>
       </div>
+
+      {/* ── Quick grade summary table ── */}
+      <div className="card" style={{marginBottom:20}}>
+        <div className="card-header"><div className="card-title">Grade Summary</div><div className="card-sub">Click a member to drill down</div></div>
+        <div className="card-body" style={{padding:0}}>
+          <table className="tbl">
+            <thead>
+              <tr><th>Member</th><th>Tasks avg</th><th>Attendance</th><th>Bonus</th><th>Penalty</th><th>Total</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {allUsers.map(m => {
+                const s = computeScore(m);
+                const isActive = m.email === selected;
+                return (
+                  <tr key={m.email} onClick={() => setSelected(m.email)}
+                    style={{cursor:"pointer", background: isActive ? "rgba(91,59,245,.05)" : "white",
+                      borderLeft: isActive ? "3px solid var(--violet)" : "3px solid transparent"}}>
+                    <td>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <div style={{width:32,height:32,borderRadius:"50%",background:"var(--r1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"white",flexShrink:0}}>
+                          {(m.name||m.Name||m.email).slice(0,2).toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{fontWeight:700,fontSize:13}}>{m.name||m.Name||m.email}</div>
+                          <div style={{fontSize:11,color:"var(--ink3)"}}>{m.teamRole||"member"}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td><span className="mono">{s.taskAvg}</span><span style={{fontSize:10,color:"var(--ink3)",marginLeft:4}}>({s.myTasks.length})</span></td>
+                    <td>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <div style={{width:60,height:5,borderRadius:3,background:"var(--frost)",overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${s.attendPct}%`,background:"var(--azure)",borderRadius:3}}/>
+                        </div>
+                        <span className="mono" style={{fontSize:11}}>{s.attendPct}%</span>
+                      </div>
+                    </td>
+                    <td><span style={{color:"var(--jade)",fontWeight:700,fontFamily:"'DM Mono',monospace"}}>+{s.bonusPts}</span></td>
+                    <td><span style={{color:s.penaltyPts>0?"var(--rose)":"var(--ink3)",fontFamily:"'DM Mono',monospace"}}>-{s.penaltyPts}</span></td>
+                    <td>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <div style={{width:50,height:6,borderRadius:3,background:"var(--frost)",overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${s.total}%`,background:gradeColor(s.total),borderRadius:3,transition:"width .4s"}}/>
+                        </div>
+                        <span style={{fontFamily:"'DM Mono',monospace",fontWeight:700,fontSize:14,color:gradeColor(s.total)}}>{s.total}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:`${gradeColor(s.total)}18`,color:gradeColor(s.total)}}>
+                        {gradeLabel(s.total)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {allUsers.length === 0 && (
+                <tr><td colSpan={7} style={{padding:20,color:"var(--ink3)",fontSize:13,textAlign:"center"}}>No members found. Make sure Users sheet has teamId column filled.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Member drill-down ── */}
+      {activeMember && activeScore && (
+        <div className="card">
+          <div className="card-header">
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <div style={{width:40,height:40,borderRadius:"50%",background:"var(--r1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"white"}}>
+                {(activeMember.name||activeMember.Name||activeMember.email).slice(0,2).toUpperCase()}
+              </div>
+              <div>
+                <div className="card-title">{activeMember.name||activeMember.Name||activeMember.email}</div>
+                <div className="card-sub">{activeMember.email} · {activeMember.teamRole||"member"}</div>
+              </div>
+            </div>
+            {/* mini score pill */}
+            <div style={{textAlign:"center"}}>
+              <div style={{fontFamily:"'Fraunces',serif",fontSize:36,fontWeight:900,color:gradeColor(activeScore.total),lineHeight:1}}>{activeScore.total}</div>
+              <div style={{fontSize:11,color:"var(--ink3)"}}>/ 100</div>
+            </div>
+          </div>
+
+          {/* Sub-tabs */}
+          <div style={{padding:"0 20px",borderBottom:"1px solid var(--frost)",display:"flex",gap:4}}>
+            {[["grades","🎓 Grades"],["tasks","📋 Tasks"],["profile","👤 Profile"]].map(([id,label])=>(
+              <button key={id} onClick={()=>setTab(id)}
+                style={{padding:"10px 16px",border:"none",background:"none",fontSize:13,fontWeight:tab===id?700:500,
+                  color:tab===id?"var(--violet)":"var(--ink3)",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",
+                  borderBottom:tab===id?"2.5px solid var(--violet)":"2.5px solid transparent",marginBottom:-1}}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Grades tab */}
+          {tab === "grades" && (
+            <div className="card-body">
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
+                {[
+                  {label:"Task Score",  value:Math.round(activeScore.taskAvg*0.5), max:50, color:"var(--violet)", detail:`avg ${activeScore.taskAvg}/100 across ${activeScore.myTasks.length} graded tasks`},
+                  {label:"Attendance",  value:activeScore.attendScore, max:25, color:"var(--azure)",  detail:`${activeScore.attended}/${meetings.length} meetings · ${activeScore.attendPct}%`},
+                  {label:"Bonus",       value:activeScore.bonusPts,    max:15, color:"var(--jade)",   detail:`from ${activeScore.myBonus.length} bonus task(s)`},
+                  {label:"Penalties",   value:activeScore.penaltyPts,  max:10, color:"var(--rose)",   detail:`${activeScore.myExcuses.filter(e=>e.status==="rejected").length} rejected excuse(s)`},
+                ].map(({label,value,max,color,detail})=>(
+                  <div key={label} style={{padding:16,borderRadius:12,border:"1px solid var(--frost)"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                      <span style={{fontSize:13,fontWeight:600}}>{label}</span>
+                      <span style={{fontFamily:"'DM Mono',monospace",fontSize:16,fontWeight:700,color}}>{value}<span style={{fontSize:11,color:"var(--ink3)",fontWeight:400}}>/{max}</span></span>
+                    </div>
+                    <div style={{height:6,borderRadius:3,background:"var(--frost)",overflow:"hidden",marginBottom:6}}>
+                      <div style={{height:"100%",width:`${Math.min(100,(value/max)*100)}%`,background:color,borderRadius:3,transition:"width .4s"}}/>
+                    </div>
+                    <div style={{fontSize:11,color:"var(--ink3)"}}>{detail}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Excuse history */}
+              {activeScore.myExcuses.length > 0 && (
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Excuse History</div>
+                  {activeScore.myExcuses.map((ex,i)=>(
+                    <div key={ex.id||i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,border:"1px solid var(--frost)",marginBottom:8,fontSize:13}}>
+                      <div style={{flex:1}}>
+                        <span style={{fontWeight:600}}>{ex.excuseType==="meeting"?"📅 Meeting":"📋 Task"}</span> — {ex.targetDate}
+                        <div style={{fontSize:12,color:"var(--ink3)",marginTop:2}}>{ex.reason?.slice(0,80)}</div>
+                      </div>
+                      <span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,
+                        background:ex.status==="approved"?"#d1fae5":ex.status==="rejected"?"#fee2e2":"#fef3c7",
+                        color:ex.status==="approved"?"#065f46":ex.status==="rejected"?"#991b1b":"#92400e"}}>
+                        {ex.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tasks tab */}
+          {tab === "tasks" && (
+            <div className="card-body" style={{padding:0}}>
+              {activeScore.allTasks.length === 0
+                ? <div style={{padding:24,color:"var(--ink3)",fontSize:13,textAlign:"center"}}>No tasks assigned yet.</div>
+                : activeScore.allTasks.map((t,i)=>(
+                  <div key={t.id||i} style={{padding:"14px 20px",borderBottom:"1px solid var(--frost)",display:"flex",alignItems:"center",gap:12}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:600}}>
+                        {t.taskTitle}
+                        {t.isBonus==="true"&&<span style={{fontSize:10,background:"#d1fae5",color:"#065f46",padding:"2px 7px",borderRadius:10,marginLeft:8,fontWeight:700}}>BONUS</span>}
+                      </div>
+                      <div style={{fontSize:11,color:"var(--ink3)",marginTop:2}}>Due: {t.dueDate||"—"} · Assigned to: {t.assignedTo==="all"?"Whole team":t.assignedTo}</div>
+                      {t.submissionLink&&<a href={t.submissionLink} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--azure)"}}>View submission ↗</a>}
+                      {t.feedback&&<div style={{fontSize:11,marginTop:4,padding:"5px 9px",background:"var(--snow)",borderRadius:7}}>💬 {t.feedback}</div>}
+                    </div>
+                    <div style={{textAlign:"center",minWidth:50}}>
+                      {t.status==="graded"
+                        ? <><div style={{fontFamily:"'DM Mono',monospace",fontSize:20,fontWeight:700,color:"var(--jade)"}}>{t.score}</div><div style={{fontSize:9,color:"var(--ink3)"}}>/ 100</div></>
+                        : <span style={{padding:"4px 10px",borderRadius:20,fontSize:10,fontWeight:700,
+                            background:t.status==="submitted"?"#fef3c7":t.status==="assigned"?"#eff6ff":"var(--frost)",
+                            color:t.status==="submitted"?"#92400e":t.status==="assigned"?"#1e40af":"var(--ink3)"}}>
+                            {t.status||"pending"}
+                          </span>
+                      }
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+          )}
+
+          {/* Profile tab */}
+          {tab === "profile" && (
+            <div className="card-body">
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+                {[
+                  ["Email",    activeMember.email],
+                  ["Role",     activeMember.teamRole||activeMember.role||"—"],
+                  ["Team",     `Team ${team.id}`],
+                  ["Track",    team.track],
+                ].map(([k,v])=>(
+                  <div key={k} style={{padding:"10px 14px",borderRadius:10,background:"var(--snow)",border:"1px solid var(--frost)"}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{k}</div>
+                    <div style={{fontSize:13,fontWeight:600,wordBreak:"break-all"}}>{v||"—"}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Social links */}
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
+                {[
+                  {url:activeMember.linkedin, icon:"💼", label:"LinkedIn",  bg:"#0077B5"},
+                  {url:activeMember.github,   icon:"🐙", label:"GitHub",    bg:"#24292e"},
+                  {url:activeMember.kaggle,   icon:"🏅", label:"Kaggle",    bg:"#20BEFF"},
+                ].filter(l=>l.url).map(l=>(
+                  <a key={l.label} href={l.url} target="_blank" rel="noreferrer"
+                    style={{display:"flex",alignItems:"center",gap:7,padding:"8px 14px",borderRadius:10,background:l.bg,color:"#fff",textDecoration:"none",fontSize:13,fontWeight:700}}>
+                    {l.icon} {l.label} ↗
+                  </a>
+                ))}
+                {!activeMember.linkedin&&!activeMember.github&&!activeMember.kaggle&&(
+                  <span style={{fontSize:13,color:"var(--ink3)"}}>No profiles linked yet (member fills these in their Profile page).</span>
+                )}
+              </div>
+              {activeMember.bio && (
+                <div style={{padding:"12px 14px",background:"var(--snow)",borderRadius:10,border:"1px solid var(--frost)",fontSize:13,color:"var(--ink2)",lineHeight:1.7}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:.5,marginBottom:6}}>Bio</div>
+                  {activeMember.bio}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -5501,59 +5755,145 @@ function ProAdminDashboard() {
 function ProfileView({ user }) {
   const { updateUser } = useContext(DataCtx);
   const [form, setForm] = useState({...user});
+  const [saved, setSaved] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = () => { updateUser(user.id, form); };
+  const save = () => {
+    updateUser(user.id, form);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
 
   const isParticipant = user.role === ROLES.PARTICIPANT;
+  const team = getTeam(user);
+  const isMedImaging = team?.track === "Medical Imaging";
+  const isBioinfo    = team?.track === "Bioinformatics";
+  const showKaggle   = isMedImaging || isBioinfo;
 
   return (
-    <div className="g2">
-      <div className="card">
-        <div className="card-header"><div className="card-title">My Profile</div></div>
-        <div className="card-body">
-          <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:24,padding:16,background:"var(--snow)",borderRadius:12}}>
-            <Avatar user={user}/>
-            <div>
-              <div style={{fontWeight:700,fontSize:16}}>{user.name}</div>
-              <div className="txt-muted">{user.email}</div>
-              <span className={`pill-role pill-${user.role}`} style={{display:"inline-block",marginTop:6}}>{user.role}</span>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+      {/* ── LEFT: Editable fields ── */}
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">My Profile</div>
+            {saved && <span style={{fontSize:12,color:"var(--jade)",fontWeight:700}}>✓ Saved!</span>}
+          </div>
+          <div className="card-body">
+            {/* Avatar row */}
+            <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:24,padding:16,background:"var(--snow)",borderRadius:12,border:"1px solid var(--frost)"}}>
+              <Avatar user={user}/>
+              <div>
+                <div style={{fontWeight:700,fontSize:16}}>{user.name||user.Name||"—"}</div>
+                <div className="txt-muted">{user.email}</div>
+                <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
+                  <span className={`pill-role pill-${user.role}`} style={{display:"inline-block"}}>{user.role}</span>
+                  {team && <span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:"var(--frost)",color:"var(--ink2)"}}>Team {team.id} · {team.track}</span>}
+                </div>
+              </div>
+            </div>
+
+            <div className="fg"><label className="flabel">Full Name</label>
+              <input className="finput" value={form.name||""} onChange={e=>set("name",e.target.value)}/>
+            </div>
+            {!isParticipant
+              ? <div className="fg"><label className="flabel">Email</label><input className="finput" value={form.email||""} onChange={e=>set("email",e.target.value)}/></div>
+              : <div className="fg"><label className="flabel">Email</label><input className="finput" value={form.email||""} disabled style={{opacity:0.6,cursor:"not-allowed"}}/></div>
+            }
+            <div className="fg">
+              <label className="flabel">New Password <span style={{fontWeight:400,textTransform:"none",letterSpacing:0}}>(leave blank to keep current)</span></label>
+              <input className="finput" type="password" placeholder="New password…" onChange={e=>e.target.value&&set("password",e.target.value)}/>
             </div>
           </div>
-          <div className="fg"><label className="flabel">Full Name</label><input className="finput" value={form.name||""} onChange={e=>set("name",e.target.value)}/></div>
-          {!isParticipant && (
-            <div className="fg"><label className="flabel">Email</label><input className="finput" value={form.email||""} onChange={e=>set("email",e.target.value)}/></div>
-          )}
-          {isParticipant && (
-            <div className="fg"><label className="flabel">Email</label><input className="finput" value={form.email||""} disabled style={{opacity:0.6,cursor:"not-allowed"}}/></div>
-          )}
-          <div className="fg"><label className="flabel">New Password (leave blank to keep current)</label><input className="finput" type="password" placeholder="New password..." onChange={e=>e.target.value&&set("password",e.target.value)}/></div>
-          <button className="btn btn-p" onClick={save}>Save Changes → Google Sheets</button>
+        </div>
+
+        {/* ── Social / Research Links ── */}
+        <div className="card">
+          <div className="card-header"><div className="card-title">🔗 Research Profiles</div><div className="card-sub">Visible to your team and AR</div></div>
+          <div className="card-body">
+            <div className="fg">
+              <label className="flabel">LinkedIn URL</label>
+              <div style={{position:"relative"}}>
+                <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:14}}>💼</span>
+                <input className="finput" style={{paddingLeft:34}} value={form.linkedin||""} onChange={e=>set("linkedin",e.target.value)} placeholder="https://linkedin.com/in/username"/>
+              </div>
+            </div>
+            <div className="fg">
+              <label className="flabel">GitHub URL</label>
+              <div style={{position:"relative"}}>
+                <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:14}}>🐙</span>
+                <input className="finput" style={{paddingLeft:34}} value={form.github||""} onChange={e=>set("github",e.target.value)} placeholder="https://github.com/username"/>
+              </div>
+            </div>
+            {showKaggle && (
+              <div className="fg">
+                <label className="flabel">Kaggle URL <span style={{fontWeight:400,textTransform:"none",letterSpacing:0,color:"var(--azure)"}}>{isMedImaging?"(Medical Imaging)":"(Bioinformatics)"}</span></label>
+                <div style={{position:"relative"}}>
+                  <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:14}}>🏅</span>
+                  <input className="finput" style={{paddingLeft:34}} value={form.kaggle||""} onChange={e=>set("kaggle",e.target.value)} placeholder="https://kaggle.com/username"/>
+                </div>
+              </div>
+            )}
+            <div className="fg">
+              <label className="flabel">Short Bio</label>
+              <textarea className="finput ftextarea" style={{minHeight:90}} value={form.bio||""} onChange={e=>set("bio",e.target.value)} placeholder="Tell your team about your background, interests, and what you're working on…"/>
+            </div>
+            <button className="btn btn-p" onClick={save}>Save All Changes → Google Sheets</button>
+          </div>
         </div>
       </div>
-      <div className="card">
-        <div className="card-header"><div className="card-title">Account Info</div></div>
-        <div className="card-body">
-          {isParticipant&&[
-            ["User ID",user.id],["Role","Participant"],
-          ].map(([k,v])=>(
-            <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid var(--frost)",fontSize:13}}>
-              <span className="txt-muted">{k}</span><span style={{fontWeight:600}}>{v}</span>
-            </div>
-          ))}
-          {isParticipant&&(
-            <div style={{marginTop:16,padding:"14px",background:"var(--snow)",borderRadius:10,fontSize:13,color:"var(--ink3)",lineHeight:1.7}}>
-              Your program details will appear here once your admin has set up your profile.
-            </div>
-          )}
-          {user.role===ROLES.MENTOR&&[
-            ["User ID",user.id],["Specialty",user.specialty],["Track",user.track],["Mentees",user.mentees?.join(", ")||"None"],["Meetings",user.meetings],["Papers Reviewed",user.papersReviewed],
-          ].map(([k,v])=>(
-            <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid var(--frost)",fontSize:13}}>
-              <span className="txt-muted">{k}</span><span style={{fontWeight:600}}>{v}</span>
-            </div>
-          ))}
-          {user.role===ROLES.SUPERADMIN&&<div className="alert alert-success">You have full administrative access to all program data.</div>}
+
+      {/* ── RIGHT: Read-only account info + live link preview ── */}
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        <div className="card">
+          <div className="card-header"><div className="card-title">Account Info</div></div>
+          <div className="card-body" style={{padding:0}}>
+            {[
+              ["User ID",     user.id||"—"],
+              ["Role",        user.role||"—"],
+              ["Team",        team ? `Team ${team.id} — ${team.challenge.slice(0,40)}…` : "Not assigned"],
+              ["Track",       team?.track||"—"],
+              ["Meeting",     team?.meeting||"—"],
+            ].map(([k,v]) => (
+              <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"11px 20px",borderBottom:"1px solid var(--frost)",fontSize:13}}>
+                <span style={{color:"var(--ink3)",fontWeight:600,minWidth:90}}>{k}</span>
+                <span style={{fontWeight:600,textAlign:"right",maxWidth:260,wordBreak:"break-word"}}>{v}</span>
+              </div>
+            ))}
+            {user.role===ROLES.MENTOR&&[
+              ["Specialty",user.specialty],["Mentees",user.mentees?.join(", ")||"None"],
+              ["Meetings",user.meetings],["Papers",user.papersReviewed],
+            ].map(([k,v])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"11px 20px",borderBottom:"1px solid var(--frost)",fontSize:13}}>
+                <span style={{color:"var(--ink3)",fontWeight:600}}>{k}</span><span style={{fontWeight:600}}>{v}</span>
+              </div>
+            ))}
+            {user.role===ROLES.SUPERADMIN&&(
+              <div style={{padding:16}}><div className="alert alert-success">Full administrative access to all program data.</div></div>
+            )}
+          </div>
         </div>
+
+        {/* Link preview */}
+        {(form.linkedin||form.github||form.kaggle||form.bio) && (
+          <div className="card">
+            <div className="card-header"><div className="card-title">Your Public Profile Preview</div></div>
+            <div className="card-body">
+              {form.bio && <p style={{fontSize:13,color:"var(--ink2)",lineHeight:1.7,marginBottom:16,padding:"12px 14px",background:"var(--snow)",borderRadius:10}}>{form.bio}</p>}
+              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                {[
+                  {url:form.linkedin, icon:"💼", label:"LinkedIn",  color:"#0077B5"},
+                  {url:form.github,   icon:"🐙", label:"GitHub",    color:"#24292e"},
+                  {url:form.kaggle,   icon:"🏅", label:"Kaggle",    color:"#20BEFF"},
+                ].filter(l=>l.url).map(l => (
+                  <a key={l.label} href={l.url} target="_blank" rel="noreferrer"
+                    style={{display:"flex",alignItems:"center",gap:8,padding:"8px 16px",borderRadius:10,background:l.color,color:"#fff",textDecoration:"none",fontSize:13,fontWeight:700}}>
+                    {l.icon} {l.label} ↗
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5676,23 +6016,23 @@ function AppShell() {
     // ─── ASSOCIATE RESEARCHER ───────────────────────────────────────────────
     [ROLES.ASSOCIATE_RESEARCHER]: {
       nav: [
-        { id:"dashboard",  icon:"🏠", label:"Dashboard" },
+        { id:"dashboard",  icon:"📊", label:"Team Overview" },
         { id:"tasks",      icon:"📋", label:"Manage Tasks", badge:"!", badgeWarn:true },
-        { id:"meetings",   icon:"📅", label:"Meeting Notes" },
-        { id:"excuses",    icon:"📝", label:"Review Excuses" },
-        { id:"grades",     icon:"🏆", label:"Team Grades" },
+        { id:"meetings",   icon:"📅", label:"Meetings" },
+        { id:"excuses",    icon:"📝", label:"Excuses" },
+        { id:"grades",     icon:"🏆", label:"Grades" },
         { id:"challenges", icon:"🏥", label:"MICCAI Challenges" },
         { id:"profile",    icon:"👤", label:"My Profile" },
       ],
       pages: {
-        dashboard:  <ARTaskManager user={user}/>,
+        dashboard:  <TeamGradeOverview user={user}/>,
         tasks:      <ARTaskManager user={user}/>,
         meetings:   <MeetingNotesView user={user}/>,
         excuses:    <ExcuseReviewView user={user}/>,
         grades:     <TeamGradeOverview user={user}/>,
         challenges: <MICCAIChallenges user={user}/>,
       },
-      defaultPage: "tasks",
+      defaultPage: "dashboard",
     },
 
     // ─── TEAM ADMIN ─────────────────────────────────────────────────────────
