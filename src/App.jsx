@@ -2451,6 +2451,14 @@ function GradePill({ score }) {
 
 // ─── Member view: see my own grade breakdown ────────────────────────────────
 function MyGradeView({ user }) {
+  const roleKey = (user.teamRole || "").toLowerCase().trim();
+  if (roleKey === "associate_researcher" || roleKey === "associate") return (
+    <div style={{padding:"40px 24px",textAlign:"center"}}>
+      <div style={{fontSize:36,marginBottom:12}}>📊</div>
+      <div style={{fontSize:15,fontWeight:700,color:"var(--ink)",marginBottom:8}}>No grade assigned</div>
+      <div style={{fontSize:13,color:"var(--ink3)"}}>Associate Researchers assess others — they are not graded themselves.</div>
+    </div>
+  );
   const team = getTeam(user);
   const [tasks, setTasks]       = useState([]);
   const [meetings, setMeetings] = useState([]);
@@ -3243,7 +3251,11 @@ function TeamGradeOverview({ user }) {
       setTasks(t || []);
       setMeetings(m || []);
       setExcuses(ex || []);
-      const members = (u || []).filter(mem => (mem.teamId || mem.team) === team.id);
+      const members = (u || []).filter(mem =>
+        (mem.teamId || mem.team) === team.id &&
+        mem.teamRole !== "associate_researcher" &&
+        mem.teamRole !== "associate"
+      );
       setAllUsers(members);
       if (members.length > 0) setSelected(members[0].email);
       setLoading(false);
