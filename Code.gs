@@ -188,7 +188,7 @@ function doPost(e) {
       return jsonResponse({ status:'ok', message:'Vote recorded' });
     }
 
-
+    return jsonResponse({ status:'error', message:'Unknown action: '+action });
   } catch(err) { return jsonResponse({ status:'error', message:err.toString() }); }
 }
 
