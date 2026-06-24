@@ -1873,7 +1873,6 @@ function MICCAIChallenges({ user }) {
   const [mainTab, setMainTab] = useState(isAuthorized ? "overview" : "mytasks");
   const [activeSprint, setActiveSprint] = useState(0);
   const [expandedTasks, setExpandedTasks] = useState({});
-  const [scores, setScores] = useState({ pipeline: 0, architecture: 0, optimization: 0, validation: 0 });
   const [animIn, setAnimIn] = useState(true);
   const [sprintTasks, setSprintTasks] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
@@ -1895,13 +1894,6 @@ function MICCAIChallenges({ user }) {
       await pushToSheets(sheet, data);
     }
   };
-
-  const totalScore = Math.round(
-    scores.pipeline * SCORING_WEIGHTS.pipeline * 5 +
-    scores.architecture * SCORING_WEIGHTS.architecture * 5 +
-    scores.optimization * SCORING_WEIGHTS.optimization * 5 +
-    scores.validation * SCORING_WEIGHTS.validation * 5
-  );
 
   const switchChallenge = (id) => {
     setAnimIn(false);
@@ -2000,8 +1992,8 @@ function MICCAIChallenges({ user }) {
       {/* Main Navigation Tabs */}
       <div style={{display:"flex",gap:6,background:"var(--snow)",padding:5,borderRadius:12,border:"1px solid var(--frost)",marginBottom:20,flexWrap:"wrap"}}>
         {(isAuthorized
-          ? [["overview","🎯","Overview"],["sprints","📅","Sprint Plan"],["manage","📋","Manage Tasks"],["assess","📊","Assessment"]]
-          : [["mytasks","✅","My Tasks"],["sprints","📅","Sprint Plan"]]
+          ? [["overview","🎯","Overview"],["manage","📋","Manage Tasks"]]
+          : [["mytasks","✅","My Tasks"]]
         ).map(([id,ic,lb]) => (
           <button key={id} className={`miccai-tab ${mainTab===id?"active":""}`} onClick={() => setMainTab(id)}>{ic} {lb}</button>
         ))}
@@ -2011,28 +2003,16 @@ function MICCAIChallenges({ user }) {
       {mainTab === "overview" && (
         <div className="miccai-fadein" style={{display:"grid",gap:16}}>
           {/* Challenge Details Row */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-            <div className="miccai-card" style={{padding:20}}>
-              <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:12}}>Dataset</div>
-              <div style={{fontSize:14,fontWeight:600,color:"var(--ink)",lineHeight:1.6,marginBottom:12}}>{challenge.dataset}</div>
-              <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:8,marginTop:4}}>Challenge Tasks</div>
-              {challenge.tasks.map((t,i) => (
-                <div key={i} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:i<challenge.tasks.length-1?"1px solid var(--frost)":"none",alignItems:"flex-start"}}>
-                  <span style={{minWidth:22,height:22,borderRadius:"50%",background:`${challenge.color}18`,color:challenge.color,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{i+1}</span>
-                  <span style={{fontSize:13,color:"var(--ink2)",lineHeight:1.5}}>{t}</span>
-                </div>
-              ))}
-            </div>
-            <div className="miccai-card" style={{padding:20}}>
-              <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:12}}>Pipeline Architecture</div>
-              <div className="miccai-arch-box">{challenge.architecture}</div>
-              <div style={{marginTop:16,fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:8}}>Team Composition</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {["Mentor","Associate Researcher","TM1","TM2","TM3","TM4","TM5","TM6","TM7","TM8","Board Admin"].map((r,i) => (
-                  <span key={i} style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:"var(--snow)",border:"1px solid var(--frost)",color:"var(--ink2)"}}>{r}</span>
-                ))}
+          <div className="miccai-card" style={{padding:20}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:12}}>Dataset</div>
+            <div style={{fontSize:14,fontWeight:600,color:"var(--ink)",lineHeight:1.6,marginBottom:12}}>{challenge.dataset}</div>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:8,marginTop:4}}>Challenge Tasks</div>
+            {challenge.tasks.map((t,i) => (
+              <div key={i} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:i<challenge.tasks.length-1?"1px solid var(--frost)":"none",alignItems:"flex-start"}}>
+                <span style={{minWidth:22,height:22,borderRadius:"50%",background:`${challenge.color}18`,color:challenge.color,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{i+1}</span>
+                <span style={{fontSize:13,color:"var(--ink2)",lineHeight:1.5}}>{t}</span>
               </div>
-            </div>
+            ))}
           </div>
 
           {/* 8-Week Timeline Visual */}
@@ -2057,120 +2037,9 @@ function MICCAIChallenges({ user }) {
             </div>
           </div>
 
-          {/* Global Scoring Framework */}
-          <div className="miccai-card" style={{padding:24}}>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:16}}>360° Assessment Framework</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
-              {[["Data Pipeline","20%","pipeline","#0EA5C5"],["Core Architecture","30%","architecture","#5B3BF5"],["Optimization & Loss","25%","optimization","#E8860A"],["Validation & Docker","25%","validation","#0F9F6E"]].map(([n,w,k,c]) => (
-                <div key={k} style={{padding:16,borderRadius:12,background:"var(--snow)",border:"1px solid var(--frost)"}}>
-                  <div style={{fontSize:20,fontWeight:900,color:c,marginBottom:4}}>{w}</div>
-                  <div style={{fontSize:12,fontWeight:600,color:"var(--ink)",marginBottom:12}}>{n}</div>
-                  <div className="miccai-score-bar">
-                    <div className="miccai-score-fill" style={{width:`${scores[k]*20}%`,background:c}} />
-                  </div>
-                  <input type="range" min={0} max={5} value={scores[k]} onChange={e=>setScores(p=>({...p,[k]:+e.target.value}))}
-                    style={{width:"100%",marginTop:8,accentColor:c}} />
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--ink3)",marginTop:2}}>
-                    <span>0</span><span style={{color:c,fontWeight:700}}>{Math.round(scores[k]*parseFloat(w)/100*100)}pts</span><span>5</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{marginTop:16,padding:"14px 20px",borderRadius:12,background:"linear-gradient(135deg,var(--violet),var(--azure))",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div>
-                <div style={{color:"rgba(255,255,255,.8)",fontSize:11,fontWeight:600,marginBottom:2}}>Estimated Total Score</div>
-                <div style={{fontSize:11,color:"rgba(255,255,255,.6)"}}>Pipeline×0.20 + Architecture×0.30 + Optimization×0.25 + Validation×0.25</div>
-              </div>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontFamily:"'Fraunces',serif",fontSize:40,fontWeight:900,color:"#fff",lineHeight:1}}>{totalScore}</div>
-                <div style={{fontSize:11,color:"rgba(255,255,255,.7)"}}>out of 100</div>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
-      {/* ── TAB: SPRINT PLAN ── */}
-      {mainTab === "sprints" && (
-        <div className="miccai-fadein">
-          {/* Reference plan notice */}
-          <div style={{padding:"12px 18px",borderRadius:12,background:"#fffbeb",border:"1px solid #fde68a",marginBottom:20,display:"flex",alignItems:"center",gap:12,fontSize:13,color:"#92400E"}}>
-            <span style={{fontSize:20}}>📋</span>
-            <div>
-              <strong>Reference Plan</strong> — This shows the suggested task structure for each sprint. 
-              {isAuthorized
-                ? <span> Use the <strong>Manage Tasks</strong> tab to create and assign the actual tasks to your team members.</span>
-                : <span> Your AR / Admin will assign your actual tasks in the <strong>My Tasks</strong> tab.</span>
-              }
-            </div>
-          </div>
-          {/* Sprint Selector */}
-          <div style={{display:"flex",alignItems:"center",gap:0,marginBottom:20,background:"#fff",borderRadius:14,border:"1px solid var(--frost)",padding:4,width:"fit-content"}}>
-            {challenge.sprints.map((s,i) => (
-              <button key={i} onClick={() => setActiveSprint(i)}
-                style={{padding:"9px 18px",borderRadius:10,border:"none",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,transition:"all .18s",
-                  background:activeSprint===i ? phaseColors[i] : "transparent",
-                  color:activeSprint===i ? "#fff" : "var(--ink3)"}}>
-                {s.weeks}
-              </button>
-            ))}
-          </div>
-
-          {/* Active Sprint Detail */}
-          {challenge.sprints.map((sprint, si) => si === activeSprint && (
-            <div key={si} className="miccai-fadein">
-              {/* Sprint Header */}
-              <div style={{background:`linear-gradient(135deg,${phaseColors[si]}18,${phaseColors[si]}08)`,border:`1px solid ${phaseColors[si]}30`,borderRadius:16,padding:"18px 22px",marginBottom:20,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-                <div style={{width:48,height:48,borderRadius:12,background:phaseColors[si],display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:"#fff",fontWeight:900,flexShrink:0}}>{si+1}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:11,fontWeight:700,color:phaseColors[si],letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>{sprint.weeks} · Milestone {si+1} of 4</div>
-                  <div style={{fontSize:18,fontWeight:800,color:"var(--ink)"}}>{sprint.label}</div>
-                </div>
-                <div style={{fontSize:12,color:"var(--ink3)",textAlign:"right"}}>
-                  <div style={{fontWeight:700,color:phaseColors[si],fontSize:20}}>{Object.values(sprint.tasks).flat().length}</div>
-                  <div>total tasks</div>
-                </div>
-              </div>
-
-              {/* Tasks by Role — members only see their own role; mentors/admins see all */}
-              <div style={{display:"grid",gap:10}}>
-                {Object.entries(sprint.tasks).filter(([role]) => canSwitchChallenge || isAssociate || role === userRoleKey).map(([role, tasks]) => {
-                  const key = `${si}-${role}`;
-                  const isOpen = expandedTasks[key];
-                  const rColor = roleColor(role);
-                  const isMyRole = role === userRoleKey;
-                  return (
-                    <div key={role} className={`miccai-task-row ${isOpen?"expanded":""}`}
-                      onClick={() => toggleTask(key)}
-                      style={{border:`1px solid ${isMyRole ? challenge.color : isOpen ? "var(--violet)" : "var(--frost)"}`,
-                        background:isMyRole ? `${challenge.color}06` : isOpen ? "#fff" : "var(--snow)"}}>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                          <span style={{width:10,height:10,borderRadius:"50%",background:rColor,flexShrink:0,display:"inline-block"}} />
-                          <span style={{fontSize:13,fontWeight:700,color:"var(--ink)"}}>{roleLabel(role)}</span>
-                          {isMyRole && <span className="miccai-my-badge" style={{fontSize:10,padding:"2px 8px"}}>You</span>}
-                          <span style={{fontSize:11,color:"var(--ink3)"}}>{tasks.length} task{tasks.length!==1?"s":""}</span>
-                        </div>
-                        <span style={{fontSize:16,color:"var(--ink3)",transition:"transform .2s",display:"inline-block",transform:isOpen?"rotate(180deg)":""}}>▾</span>
-                      </div>
-                      {isOpen && (
-                        <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid var(--frost)",display:"grid",gap:8}} onClick={e=>e.stopPropagation()}>
-                          {tasks.map((t,ti) => (
-                            <div key={ti} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"8px 12px",borderRadius:8,background:`${rColor}08`,border:`1px solid ${rColor}20`}}>
-                              <span style={{minWidth:20,height:20,borderRadius:6,background:rColor,color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1}}>{ti+1}</span>
-                              <span style={{fontSize:13,color:"var(--ink)",lineHeight:1.55}}>{t}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* ── TAB: MY TASKS (Members only) ── */}
       {mainTab === "mytasks" && (
@@ -2229,82 +2098,6 @@ function MICCAIChallenges({ user }) {
         </div>
       )}
 
-      {/* ── TAB: ASSESSMENT ── */}
-      {mainTab === "assess" && (
-        <div className="miccai-fadein">
-          {/* Key Roles Assessment Table */}
-          <div className="miccai-card" style={{padding:24,marginBottom:16}}>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:16}}>Role-Based KPI Rubric — {challenge.name}</div>
-            <div style={{display:"grid",gridTemplateColumns:"120px 1fr 1fr",gap:0,marginBottom:6}}>
-              {["Role","Metric Tracker","Success Criteria"].map(h => (
-                <div key={h} style={{fontSize:11,fontWeight:700,color:"var(--ink3)",padding:"6px 16px",letterSpacing:.8}}>{h}</div>
-              ))}
-            </div>
-            {challenge.assessment.map((a,i) => (
-              <div key={i} className="miccai-assess-row" style={{background:a.role===roleLabel(userRoleKey)?`${challenge.color}06`:"transparent",border:`1px solid ${a.role===roleLabel(userRoleKey)?challenge.color:"var(--frost)"}`}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{width:8,height:8,borderRadius:"50%",background:roleColor(a.role.replace("Team Member ","TM").replace(/ /g,"")),flexShrink:0,display:"inline-block"}} />
-                  <span style={{fontSize:12,fontWeight:700,color:"var(--ink)"}}>{a.role}</span>
-                  {a.role===roleLabel(userRoleKey)&&<span className="miccai-my-badge" style={{fontSize:9,padding:"1px 6px"}}>You</span>}
-                </div>
-                <div style={{fontSize:12,fontWeight:600,color:"var(--ink2)"}}>{a.metric}</div>
-                <div style={{fontSize:12,color:"var(--ink3)",lineHeight:1.5}}>{a.criteria}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* 360° Scoring Engine */}
-          <div className="miccai-card" style={{padding:24}}>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--ink3)",letterSpacing:1.2,textTransform:"uppercase",marginBottom:20}}>360° Sprint Review — Score Calculator</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-              {[
-                ["Data Pipeline Execution","pipeline","20","Evaluates spatial alignment, multi-modal registration, augmentation design, and ingestion performance","#0EA5C5"],
-                ["Core Architecture & Innovation","architecture","30","Evaluates how effectively design handles challenge requirements (multi-phase, temporal tracking, user input)","#5B3BF5"],
-                ["Optimization & Loss Engineering","optimization","25","Measures training stability, loss function design, hyperparameter balancing, and convergence behavior","#E8860A"],
-                ["Validation, Tracking & Containerization","validation","25","Assesses metric alignment, validation tracking, and stable Docker configs matching challenge rules","#0F9F6E"]
-              ].map(([name,key,maxPts,desc,color]) => (
-                <div key={key} style={{padding:18,borderRadius:14,border:`1px solid ${color}30`,background:`${color}06`}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"var(--ink)"}}>{name}</div>
-                    <div style={{fontSize:22,fontWeight:900,color:color}}>{maxPts}pts</div>
-                  </div>
-                  <div style={{fontSize:11,color:"var(--ink3)",lineHeight:1.6,marginBottom:14}}>{desc}</div>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <div style={{flex:1}}>
-                      <div className="miccai-score-bar">
-                        <div className="miccai-score-fill" style={{width:`${scores[key]*20}%`,background:color}} />
-                      </div>
-                      <input type="range" min={0} max={5} value={scores[key]} onChange={e=>setScores(p=>({...p,[key]:+e.target.value}))}
-                        style={{width:"100%",marginTop:6,accentColor:color}} />
-                    </div>
-                    <div style={{fontSize:22,fontWeight:900,color,minWidth:36,textAlign:"center"}}>{scores[key]}</div>
-                  </div>
-                  <div style={{fontSize:11,color:"var(--ink3)",marginTop:6}}>
-                    Score {scores[key]}/5 → <strong style={{color}}>{Math.round(scores[key]*parseFloat(maxPts)/5)}pts</strong> earned
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{marginTop:20,padding:"18px 24px",borderRadius:14,background:"linear-gradient(135deg,#0C1227,#1a2045)",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:16}}>
-              <div>
-                <div style={{color:"rgba(255,255,255,.6)",fontSize:11,fontWeight:600,marginBottom:6,letterSpacing:1}}>FORMULA</div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#a8d8ea",lineHeight:1.8}}>
-                  Total = (Pipeline × 0.20) + (Architecture × 0.30)<br/>
-                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ (Optimization × 0.25) + (Validation × 0.25)
-                </div>
-              </div>
-              <div style={{textAlign:"center"}}>
-                <div style={{fontFamily:"'Fraunces',serif",fontSize:56,fontWeight:900,color:"#fff",lineHeight:1}}>{totalScore}</div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,.5)"}}>/ 100 points</div>
-                <div style={{marginTop:6,display:"inline-block",padding:"4px 14px",borderRadius:20,fontSize:11,fontWeight:700,
-                  background:totalScore>=80?"#0F9F6E":totalScore>=60?"#E8860A":"#E53E5C",color:"#fff"}}>
-                  {totalScore>=80?"Excellent":totalScore>=60?"On Track":"Needs Improvement"}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
