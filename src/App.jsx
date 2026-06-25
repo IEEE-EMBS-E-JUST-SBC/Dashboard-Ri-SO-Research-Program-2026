@@ -2750,6 +2750,7 @@ function MeetingNotesView({ user }) {
   const [saving, setSaving]       = useState(false);
   const [toast, setToast]         = useState("");
   const [editingLinks, setEditingLinks] = useState({});
+  const [editingMeeting, setEditingMeeting] = useState(null);
 
   useEffect(() => {
     if (!team) { setLoading(false); return; }
@@ -2904,7 +2905,32 @@ function MeetingNotesView({ user }) {
                     )}
                   </div>
                 </div>
+                {canManage && editingMeeting?.id !== activeMeeting.id && (
+                  <button className="btn btn-sm" onClick={() => setEditingMeeting({...activeMeeting})}>✏️ Edit</button>
+                )}
               </div>
+              {editingMeeting?.id === activeMeeting.id ? (
+                <div className="card-body">
+                  <div className="fg"><label className="flabel">Title</label><input className="finput" value={editingMeeting.title||""} onChange={e=>setEditingMeeting(p=>({...p,title:e.target.value}))} /></div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div className="fg"><label className="flabel">Date</label><input type="date" className="finput" value={editingMeeting.meetingDate||""} onChange={e=>setEditingMeeting(p=>({...p,meetingDate:e.target.value}))} /></div>
+                    <div className="fg"><label className="flabel">Time (GMT+3)</label><input type="time" className="finput" value={editingMeeting.meetingTime||""} onChange={e=>setEditingMeeting(p=>({...p,meetingTime:e.target.value}))} /></div>
+                  </div>
+                  <div className="fg"><label className="flabel">Meeting Link</label><input className="finput" value={editingMeeting.meetLink||""} onChange={e=>setEditingMeeting(p=>({...p,meetLink:e.target.value}))} /></div>
+                  <div className="fg"><label className="flabel">Notes</label><textarea className="finput ftextarea" style={{minHeight:80}} value={editingMeeting.notes||""} onChange={e=>setEditingMeeting(p=>({...p,notes:e.target.value}))} /></div>
+                  <div className="fg"><label className="flabel">Action Items (one per line)</label><textarea className="finput ftextarea" style={{minHeight:60}} value={editingMeeting.actionItems||""} onChange={e=>setEditingMeeting(p=>({...p,actionItems:e.target.value}))} /></div>
+                  <div style={{display:"flex",gap:10}}>
+                    <button className="btn btn-p" disabled={saving} onClick={async()=>{
+                      setSaving(true);
+                      const {id,title,meetingDate,meetingTime,meetLink,notes,actionItems} = editingMeeting;
+                      await sheetsAPI.updateByMatch("MeetingNotes","id",id,{title,meetingDate,meetingTime,meetLink,notes,actionItems});
+                      setMeetings(p=>p.map(m=>m.id===id?{...m,title,meetingDate,meetingTime,meetLink,notes,actionItems}:m));
+                      setEditingMeeting(null);setSaving(false);showToast("Meeting updated ✓");
+                    }}>{saving?"Saving…":"Save Changes"}</button>
+                    <button className="btn" onClick={()=>setEditingMeeting(null)}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
               <div className="card-body">
                 {activeMeeting.notes
                   ? <p style={{ fontSize: 14, lineHeight: 1.7, whiteSpace: "pre-wrap", color: "var(--ink2)" }}>{activeMeeting.notes}</p>
@@ -2921,6 +2947,7 @@ function MeetingNotesView({ user }) {
                   </div>
                 )}
               </div>
+              )}
             </div>
 
             {/* Meeting Resources */}
