@@ -1898,7 +1898,6 @@ function MICCAIChallenges({ user }) {
       setLoadingTasks(false);
     }).catch(() => setLoadingTasks(false));
     // Load upcoming meeting for announcement banner
-    const team = getTeam(user);
     if (team) {
       sheetsAPI.getByTeam("MeetingNotes", team.id).then(meetings => {
         if (Array.isArray(meetings)) {
