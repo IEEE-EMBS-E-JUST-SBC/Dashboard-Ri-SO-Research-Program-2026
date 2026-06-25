@@ -1767,15 +1767,13 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
       await sheetsAPI.updateByMatch("TaskSubmissions", "id", existing.id, { fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt, status: "submitted" });
       setMySubmissions(p => p.map(s => s.id === existing.id ? { ...s, fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt, status: "submitted" } : s));
     } else {
-      const sub = { id: `SUB${Date.now()}`, taskId: task.id, taskTitle: task.taskTitle || task.title || "", teamId: team.id, memberEmail: userEmail, fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt, status: "submitted" };
+      const sub = { id: `SUB${Date.now()}`, taskId: task.id, taskTitle: task.taskTitle || task.title || "", teamId: team?.id || "", memberEmail: userEmail, fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt, status: "submitted" };
       await sheetsAPI.push("TaskSubmissions", sub);
       setMySubmissions(p => [...p, sub]);
     }
-    // For individually-assigned tasks, also mark TeamTasks row submitted so AR sees it
-    if ((task.assignedTo || "").toLowerCase() !== "all") {
-      await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { status: "submitted", submittedAt });
-      onTasksChange(prev => prev.map(t => t.id === task.id ? { ...t, status: "submitted", submittedAt } : t));
-    }
+    // Always also update TeamTasks row so legacy AR views still work
+    await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { status: "submitted", fileLink: link, submittedBy: userEmail, submittedAt });
+    onTasksChange(prev => prev.map(t => t.id === task.id ? { ...t, status: "submitted", fileLink: link, submittedAt } : t));
     setSubmitting(null);
   };
 
@@ -3479,8 +3477,32 @@ function ARTaskManager({ user }) {
       sheetsAPI.getByTeam("TaskSubmissions", team.id),
       sheetsAPI.get("Users"),
     ]).then(([t, s, u]) => {
-      setTasks((t || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-      setSubmissions(s || []);
+      const allTasks = (t || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setTasks(allTasks);
+
+      // Merge TaskSubmissions entries with legacy TeamTasks submissions.
+      // If a task row in TeamTasks has status=submitted/graded and no
+      // corresponding TaskSubmissions entry exists, create a synthetic entry
+      // so the AR can still see and grade it.
+      const newSubs = s || [];
+      const newSubTaskIds = new Set(newSubs.map(sub => sub.taskId));
+      const legacySubs = allTasks
+        .filter(tk => (tk.status === "submitted" || tk.status === "graded") && !newSubTaskIds.has(tk.id))
+        .map(tk => ({
+          id:           `LEGACY_${tk.id}`,
+          taskId:       tk.id,
+          taskTitle:    tk.taskTitle || tk.title || "",
+          teamId:       tk.teamId || team.id,
+          memberEmail:  tk.submittedBy || (tk.assignedTo !== "all" ? tk.assignedTo : ""),
+          fileLink:     tk.fileLink || tk.submissionLink || "",
+          suppLinks:    tk.suppLinks || "",
+          submittedAt:  tk.submittedAt || "",
+          score:        tk.score || "",
+          feedback:     tk.feedback || "",
+          status:       tk.status,
+          _legacy:      true,
+        }));
+      setSubmissions([...newSubs, ...legacySubs]);
       if (u) setMembers(u.filter(m => (m.teamId || m.team) === team.id));
       setLoading(false);
     });
@@ -3521,7 +3543,13 @@ function ARTaskManager({ user }) {
   const gradeSubmission = async (sub) => {
     const gf = gradeForm[sub.id] || {};
     if (!gf.score) { showToast("Enter a score first."); return; }
-    await sheetsAPI.updateByMatch("TaskSubmissions", "id", sub.id, { score: gf.score, feedback: gf.feedback || "", status: "graded" });
+    if (sub._legacy) {
+      // Legacy submission lives in TeamTasks — update there
+      await sheetsAPI.updateByMatch("TeamTasks", "id", sub.taskId, { score: gf.score, feedback: gf.feedback || "", status: "graded" });
+      setTasks(p => p.map(t => t.id === sub.taskId ? { ...t, status: "graded", score: gf.score, feedback: gf.feedback || "" } : t));
+    } else {
+      await sheetsAPI.updateByMatch("TaskSubmissions", "id", sub.id, { score: gf.score, feedback: gf.feedback || "", status: "graded" });
+    }
     setSubmissions(p => p.map(s => s.id === sub.id ? { ...s, status: "graded", score: gf.score, feedback: gf.feedback || "" } : s));
     showToast("Graded ✓");
   };
@@ -3532,7 +3560,12 @@ function ARTaskManager({ user }) {
     const gf = gradeForm[editingGrade.id] || {};
     const newScore    = gf.score    !== undefined ? gf.score    : editingGrade.score;
     const newFeedback = gf.feedback !== undefined ? gf.feedback : (editingGrade.feedback || "");
-    await sheetsAPI.updateByMatch("TaskSubmissions", "id", editingGrade.id, { score: newScore, feedback: newFeedback });
+    if (editingGrade._legacy) {
+      await sheetsAPI.updateByMatch("TeamTasks", "id", editingGrade.taskId, { score: newScore, feedback: newFeedback });
+      setTasks(p => p.map(t => t.id === editingGrade.taskId ? { ...t, score: newScore, feedback: newFeedback } : t));
+    } else {
+      await sheetsAPI.updateByMatch("TaskSubmissions", "id", editingGrade.id, { score: newScore, feedback: newFeedback });
+    }
     setSubmissions(p => p.map(s => s.id === editingGrade.id ? { ...s, score: newScore, feedback: newFeedback } : s));
     setEditingGrade(null);
     setSaving(false);
