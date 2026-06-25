@@ -1722,6 +1722,7 @@ function SprintTaskManager({ user, challenge, sprintIndex, sprint, tasks, onTask
 function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets }) {
   const userKey = (user.teamRole || "").toLowerCase().trim();
   const userEmail = (user.email || "").toLowerCase().trim();
+  const team = getTeam(user);
 
   const isAssociate = userKey === "associate_researcher" || userKey === "associate";
   if (isAssociate) return (
@@ -1734,7 +1735,7 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
     </div>
   );
 
-  // Member sees tasks assigned to them, their role, or "all" — assigned/submitted/confirmed
+  // Member sees tasks assigned to them, their role, or "all"
   const myTasks = tasks.filter(t => {
     if (t.status === "draft") return false;
     const at = (t.assignedTo || "").toLowerCase().trim();
@@ -1745,31 +1746,56 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
   const [suppLinks, setSuppLinks] = useState({});
   const [submitting, setSubmitting] = useState(null);
   const [editingSubmission, setEditingSubmission] = useState(null);
+  const [mySubmissions, setMySubmissions] = useState([]);
+
+  useEffect(() => {
+    if (!team) return;
+    sheetsAPI.getByTeam("TaskSubmissions", team.id).then(subs => {
+      if (Array.isArray(subs)) setMySubmissions(subs.filter(s => (s.memberEmail || "").toLowerCase() === userEmail));
+    }).catch(() => {});
+  }, [team?.id]);
+
+  const getSub = (taskId) => mySubmissions.find(s => s.taskId === taskId);
 
   const submitTask = async (task) => {
     const link = fileLinks[task.id] || "";
     if (!link.trim()) return;
     setSubmitting(task.id);
     const submittedAt = new Date().toISOString();
-    const updated = { ...task, status:"submitted", fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt };
-    await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { status: "submitted", fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt });
-    onTasksChange(prev => prev.map(t => t.id === task.id ? updated : t));
+    const existing = getSub(task.id);
+    if (existing) {
+      await sheetsAPI.updateByMatch("TaskSubmissions", "id", existing.id, { fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt, status: "submitted" });
+      setMySubmissions(p => p.map(s => s.id === existing.id ? { ...s, fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt, status: "submitted" } : s));
+    } else {
+      const sub = { id: `SUB${Date.now()}`, taskId: task.id, taskTitle: task.taskTitle || task.title || "", teamId: team.id, memberEmail: userEmail, fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt, status: "submitted" };
+      await sheetsAPI.push("TaskSubmissions", sub);
+      setMySubmissions(p => [...p, sub]);
+    }
+    // For individually-assigned tasks, also mark TeamTasks row submitted so AR sees it
+    if ((task.assignedTo || "").toLowerCase() !== "all") {
+      await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { status: "submitted", submittedAt });
+      onTasksChange(prev => prev.map(t => t.id === task.id ? { ...t, status: "submitted", submittedAt } : t));
+    }
     setSubmitting(null);
   };
 
   const saveEditSubmission = async (task) => {
-    const link = fileLinks[task.id] || task.fileLink || "";
+    const link = fileLinks[task.id] || "";
+    if (!link.trim()) return;
     setSubmitting(task.id);
     const submittedAt = new Date().toISOString();
-    await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { fileLink: link, suppLinks: suppLinks[task.id] || task.suppLinks || "", submittedAt });
-    onTasksChange(prev => prev.map(t => t.id === task.id ? { ...t, fileLink: link, suppLinks: suppLinks[task.id] || t.suppLinks || "", submittedAt } : t));
+    const existing = getSub(task.id);
+    if (existing) {
+      await sheetsAPI.updateByMatch("TaskSubmissions", "id", existing.id, { fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt });
+      setMySubmissions(p => p.map(s => s.id === existing.id ? { ...s, fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt } : s));
+    }
     setEditingSubmission(null);
     setSubmitting(null);
   };
 
   const phaseColors = ["#E53E5C","#5B3BF5","#0EA5C5","#0F9F6E"];
-  const statusColor = { assigned:"#1A6DFF", submitted:"#5B3BF5", confirmed:"#0F9F6E" };
-  const statusLabel = { assigned:"To Do", submitted:"Pending Review", confirmed:"Completed ✓" };
+  const statusColor = { assigned:"#1A6DFF", submitted:"#5B3BF5", confirmed:"#0F9F6E", graded:"#0F9F6E" };
+  const statusLabel = { assigned:"To Do", submitted:"Pending Review", confirmed:"Completed ✓", graded:"Graded ✓" };
 
   if (myTasks.length === 0) {
     return (
@@ -1806,14 +1832,22 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
             <span style={{fontSize:14,fontWeight:700,color:"var(--ink)"}}>{sprint.label}</span>
           </div>
           <div style={{display:"grid",gap:12,paddingLeft:8,borderLeft:`3px solid ${phaseColors[si]}40`}}>
-            {stasks.map(task => (
-              <div key={task.id} style={{padding:18,borderRadius:14,border:`1px solid ${statusColor[task.status]}30`,background:"#fff",boxShadow:"0 2px 10px rgba(91,59,245,.06)"}}>
+            {stasks.map(task => {
+              const sub = getSub(task.id);
+              const effStatus = sub?.status || task.status || "assigned";
+              const effScore = sub?.score;
+              const effFeedback = sub?.feedback;
+              const effFileLink = sub?.fileLink;
+              const effSuppLinks = sub?.suppLinks;
+              const sc = statusColor[effStatus] || "#1A6DFF";
+              return (
+              <div key={task.id} style={{padding:18,borderRadius:14,border:`1px solid ${sc}30`,background:"#fff",boxShadow:"0 2px 10px rgba(91,59,245,.06)"}}>
                 <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:10}}>
                   <div>
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                       <span style={{fontSize:14,fontWeight:700,color:"var(--ink)"}}>{task.title || task.taskTitle}</span>
-                      <span style={{fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,background:`${statusColor[task.status]}15`,color:statusColor[task.status],border:`1px solid ${statusColor[task.status]}30`}}>
-                        {statusLabel[task.status]}
+                      <span style={{fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,background:`${sc}15`,color:sc,border:`1px solid ${sc}30`}}>
+                        {statusLabel[effStatus] || effStatus}
                       </span>
                     </div>
                     {(task.description || task.taskDesc) && <div style={{fontSize:13,color:"var(--ink2)",lineHeight:1.6,marginBottom:6}}>{task.description || task.taskDesc}</div>}
@@ -1829,49 +1863,39 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
                       {(task.deadline || task.dueDate) && <span style={{fontSize:11,color:"var(--ink3)"}}>📅 Due: {task.deadline || task.dueDate}</span>}
                     </div>
                   </div>
-                  {task.status === "confirmed" && task.score && (
+                  {(effStatus === "confirmed" || effStatus === "graded") && effScore && (
                     <div style={{textAlign:"center",flexShrink:0}}>
-                      <div style={{fontSize:28,fontWeight:900,color:"#0F9F6E",lineHeight:1}}>{task.score}</div>
+                      <div style={{fontSize:28,fontWeight:900,color:"#0F9F6E",lineHeight:1}}>{effScore}</div>
                       <div style={{fontSize:10,color:"var(--ink3)"}}>/ 100</div>
                     </div>
                   )}
                 </div>
 
-                {/* Confirmed feedback */}
-                {task.status === "confirmed" && task.feedback && (
+                {/* Graded / Confirmed feedback */}
+                {(effStatus === "graded" || effStatus === "confirmed") && effFeedback && (
                   <div style={{padding:"10px 14px",borderRadius:9,background:"#f0fdf8",border:"1px solid #0F9F6E30",fontSize:13,color:"var(--ink2)",marginBottom:12}}>
-                    💬 <strong>Mentor feedback:</strong> {task.feedback}
+                    💬 <strong>Feedback:</strong> {effFeedback}
                   </div>
                 )}
 
                 {/* Submitted state */}
-                {task.status === "submitted" && editingSubmission !== task.id && (
+                {effStatus === "submitted" && editingSubmission !== task.id && (
                   <div style={{padding:"10px 14px",borderRadius:9,background:"#f5f3ff",border:"1px solid #5B3BF530",fontSize:13,color:"var(--ink2)"}}>
-                    ⏳ Submitted and pending review by your mentor.
-                    {task.fileLink && <span> <a href={task.fileLink} target="_blank" rel="noreferrer" style={{color:"var(--azure)",fontWeight:600}}>View your file →</a></span>}
-                    <button onClick={() => { setEditingSubmission(task.id); setFileLinks(p => ({...p,[task.id]:task.fileLink||""})); setSuppLinks(p => ({...p,[task.id]:task.suppLinks||""})); }} style={{marginLeft:10,fontSize:11,padding:"3px 10px",borderRadius:7,border:"1px solid var(--violet)",background:"transparent",color:"var(--violet)",cursor:"pointer",fontWeight:600}}>Edit Submission</button>
+                    ⏳ Submitted — pending review.
+                    {effFileLink && <span> <a href={effFileLink} target="_blank" rel="noreferrer" style={{color:"var(--azure)",fontWeight:600}}>View your file →</a></span>}
+                    <button onClick={() => { setEditingSubmission(task.id); setFileLinks(p => ({...p,[task.id]:effFileLink||""})); setSuppLinks(p => ({...p,[task.id]:effSuppLinks||""})); }} style={{marginLeft:10,fontSize:11,padding:"3px 10px",borderRadius:7,border:"1px solid var(--violet)",background:"transparent",color:"var(--violet)",cursor:"pointer",fontWeight:600}}>Edit Submission</button>
                   </div>
                 )}
 
                 {/* Edit submission form */}
-                {task.status === "submitted" && editingSubmission === task.id && (
+                {effStatus === "submitted" && editingSubmission === task.id && (
                   <div style={{marginTop:8,padding:14,borderRadius:10,background:"var(--snow)",border:"1px solid var(--frost)"}}>
                     <div style={{fontSize:12,fontWeight:700,color:"var(--ink)",marginBottom:8}}>✏️ Edit Submission</div>
                     <div style={{marginBottom:8}}>
-                      <input
-                        value={fileLinks[task.id]||""}
-                        onChange={e=>setFileLinks(p=>({...p,[task.id]:e.target.value}))}
-                        placeholder="Paste Google Drive / GitHub link here..."
-                        style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}}
-                      />
+                      <input value={fileLinks[task.id]||""} onChange={e=>setFileLinks(p=>({...p,[task.id]:e.target.value}))} placeholder="Paste Google Drive / GitHub link here..." style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}} />
                     </div>
                     <div style={{marginBottom:8}}>
-                      <input
-                        value={suppLinks[task.id]||""}
-                        onChange={e=>setSuppLinks(p=>({...p,[task.id]:e.target.value}))}
-                        placeholder="Additional Files (optional, comma-separated links)"
-                        style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}}
-                      />
+                      <input value={suppLinks[task.id]||""} onChange={e=>setSuppLinks(p=>({...p,[task.id]:e.target.value}))} placeholder="Additional Files (optional, comma-separated links)" style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}} />
                     </div>
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={()=>saveEditSubmission(task)} disabled={submitting===task.id} style={{padding:"9px 18px",borderRadius:8,border:"none",background:"var(--violet)",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:submitting===task.id?0.5:1}}>
@@ -1883,36 +1907,24 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
                 )}
 
                 {/* Submission form for assigned tasks */}
-                {task.status === "assigned" && (
+                {effStatus === "assigned" && (
                   <div style={{marginTop:8,padding:14,borderRadius:10,background:"var(--snow)",border:"1px solid var(--frost)"}}>
                     <div style={{fontSize:12,fontWeight:700,color:"var(--ink)",marginBottom:8}}>📎 Submit your work</div>
                     <div style={{fontSize:12,color:"var(--ink3)",marginBottom:10}}>Upload your file to Google Drive and paste the shareable link below.</div>
                     <div style={{marginBottom:8}}>
-                      <input
-                        value={fileLinks[task.id]||""}
-                        onChange={e=>setFileLinks(p=>({...p,[task.id]:e.target.value}))}
-                        placeholder="Paste Google Drive / GitHub link here..."
-                        style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}}
-                      />
+                      <input value={fileLinks[task.id]||""} onChange={e=>setFileLinks(p=>({...p,[task.id]:e.target.value}))} placeholder="Paste Google Drive / GitHub link here..." style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}} />
                     </div>
                     <div style={{marginBottom:8}}>
-                      <input
-                        value={suppLinks[task.id]||""}
-                        onChange={e=>setSuppLinks(p=>({...p,[task.id]:e.target.value}))}
-                        placeholder="Additional Files (optional, comma-separated links)"
-                        style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}}
-                      />
+                      <input value={suppLinks[task.id]||""} onChange={e=>setSuppLinks(p=>({...p,[task.id]:e.target.value}))} placeholder="Additional Files (optional, comma-separated links)" style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",borderRadius:8,border:"1px solid var(--frost)",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none"}} />
                     </div>
-                    <button
-                      onClick={()=>submitTask(task)}
-                      disabled={submitting===task.id || !fileLinks[task.id]?.trim()}
-                      style={{padding:"9px 18px",borderRadius:8,border:"none",background:"var(--violet)",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:(submitting===task.id||!fileLinks[task.id]?.trim())?0.5:1,whiteSpace:"nowrap"}}>
+                    <button onClick={()=>submitTask(task)} disabled={submitting===task.id || !fileLinks[task.id]?.trim()} style={{padding:"9px 18px",borderRadius:8,border:"none",background:"var(--violet)",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:(submitting===task.id||!fileLinks[task.id]?.trim())?0.5:1,whiteSpace:"nowrap"}}>
                       {submitting===task.id ? "Submitting…" : "Submit →"}
                     </button>
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ))}
@@ -2514,29 +2526,38 @@ function MyGradeView({ user }) {
     </div>
   );
   const team = getTeam(user);
-  const [tasks, setTasks]       = useState([]);
-  const [meetings, setMeetings] = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const [tasks, setTasks]               = useState([]);
+  const [mySubmissions, setMySubmissions] = useState([]);
+  const [meetings, setMeetings]         = useState([]);
+  const [loading, setLoading]           = useState(true);
 
   useEffect(() => {
     if (!team) { setLoading(false); return; }
     Promise.all([
-      sheetsAPI.getByTeam("TeamTasks",    team.id),
-      sheetsAPI.getByTeam("MeetingNotes", team.id),
-    ]).then(([t, m]) => { setTasks(t); setMeetings(m); setLoading(false); });
+      sheetsAPI.getByTeam("TeamTasks",       team.id),
+      sheetsAPI.getByTeam("TaskSubmissions", team.id),
+      sheetsAPI.getByTeam("MeetingNotes",    team.id),
+    ]).then(([t, s, m]) => {
+      setTasks(t || []);
+      setMySubmissions((s || []).filter(sub => (sub.memberEmail || "").toLowerCase() === (user.email || "").toLowerCase()));
+      setMeetings(m || []);
+      setLoading(false);
+    });
   }, [team?.id]);
 
   if (!team) return <div className="card"><div className="card-body">No team assigned. Contact your admin.</div></div>;
   if (loading) return <div className="card"><div className="card-body">Loading grades…</div></div>;
 
-  const myTasks       = tasks.filter(t => t.assignedTo === user.email || t.assignedTo === "all");
-  const bonusTasks    = myTasks.filter(t => t.isBonus === "true" || t.isBonus === true);
-  const regularTasks  = myTasks.filter(t => t.isBonus !== "true" && t.isBonus !== true);
-  const submittedReg  = regularTasks.filter(t => t.status === "graded");
-  const taskAvg       = submittedReg.length
-    ? Math.round(submittedReg.reduce((a, t) => a + Number(t.score || 0), 0) / submittedReg.length)
+  const myTasks      = tasks.filter(t => t.assignedTo === user.email || t.assignedTo === "all");
+  // Merge task definitions with submission data
+  const tasksWithSubs = myTasks.map(t => ({ ...t, sub: mySubmissions.find(s => s.taskId === t.id) }));
+  const bonusTasks   = tasksWithSubs.filter(t => t.isBonus === "true" || t.isBonus === true);
+  const regularTasks = tasksWithSubs.filter(t => t.isBonus !== "true" && t.isBonus !== true);
+  const gradedReg    = regularTasks.filter(t => t.sub?.status === "graded");
+  const taskAvg      = gradedReg.length
+    ? Math.round(gradedReg.reduce((a, t) => a + Number(t.sub?.score || 0), 0) / gradedReg.length)
     : 0;
-  const bonusTotal    = bonusTasks.filter(t => t.status === "graded").reduce((a, t) => a + Number(t.score || 0), 0);
+  const bonusTotal   = bonusTasks.filter(t => t.sub?.status === "graded").reduce((a, t) => a + Number(t.sub?.score || 0), 0);
   const attendedCount = meetings.filter(m => (m.attendees || "").includes(user.email)).length;
   const attendancePct = meetings.length ? Math.round((attendedCount / meetings.length) * 100) : 0;
   const attendanceScore = Math.round(attendancePct * 0.25);
@@ -2562,25 +2583,32 @@ function MyGradeView({ user }) {
       <div className="card" style={{marginBottom:20}}>
         <div className="card-header"><div className="card-title">My Tasks</div><GradePill score={Math.round(totalScore)} /></div>
         <div className="card-body" style={{ padding: 0 }}>
-          {myTasks.length === 0
+          {tasksWithSubs.length === 0
             ? <div style={{ padding: 20, color: "var(--ink3)", fontSize: 13 }}>No tasks assigned yet.</div>
-            : myTasks.map((t, i) => (
+            : tasksWithSubs.map((t, i) => {
+              const effStatus = t.sub?.status || t.status || "assigned";
+              const effScore  = t.sub?.score;
+              return (
               <div key={t.id || i} style={{ padding: "14px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{t.taskTitle} {t.isBonus === "true" && <span style={{ fontSize: 10, background: "var(--jade)18", color: "var(--jade)", padding: "2px 8px", borderRadius: 10, marginLeft: 6, fontWeight: 700 }}>BONUS</span>}</div>
-                  <div className="txt-muted" style={{ fontSize: 11 }}>Due: {t.dueDate || "—"} · {t.status}</div>
+                  <div className="txt-muted" style={{ fontSize: 11 }}>
+                    Due: {t.dueDate || "—"} · {effStatus}
+                    {t.sub?.fileLink && <> · <a href={t.sub.fileLink} target="_blank" rel="noreferrer" style={{color:"var(--azure)"}}>My submission ↗</a></>}
+                  </div>
+                  {effStatus === "graded" && t.sub?.feedback && <div style={{fontSize:11,color:"var(--ink3)",fontStyle:"italic",marginTop:2}}>"{t.sub.feedback}"</div>}
                 </div>
-                {t.status === "graded" && (
+                {effStatus === "graded" ? (
                   <div style={{ textAlign: "center" }}>
-                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 700, color: "var(--jade)" }}>{t.score}</div>
+                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 700, color: "var(--jade)" }}>{effScore}</div>
                     <div style={{ fontSize: 10, color: "var(--ink3)" }}>/ 100</div>
                   </div>
-                )}
-                {t.status !== "graded" && (
-                  <span className={`badge ${t.status === "submitted" ? "b-review" : t.status === "assigned" ? "b-phase" : "b-qual"}`}>{t.status || "pending"}</span>
+                ) : (
+                  <span className={`badge ${effStatus === "submitted" ? "b-review" : effStatus === "assigned" ? "b-phase" : "b-qual"}`}>{effStatus}</span>
                 )}
               </div>
-            ))
+              );
+            })
           }
         </div>
       </div>
@@ -3432,22 +3460,27 @@ function WeeklyFeedbackView({ user }) {
 function ARTaskManager({ user }) {
   const team = getTeam(user);
   const { pushToSheets } = useContext(DataCtx);
-  const [tasks, setTasks]         = useState([]);
-  const [members, setMembers]     = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [form, setForm]           = useState({ taskTitle: "", taskDesc: "", assignedTo: "all", dueDate: "", isBonus: false, suppFiles: "" });
-  const [gradeForm, setGradeForm] = useState({});
-  const [saving, setSaving]       = useState(false);
-  const [toast, setToast]         = useState("");
-  const [editingTask, setEditingTask] = useState(null);
+  const [tasks, setTasks]               = useState([]);
+  const [submissions, setSubmissions]   = useState([]);
+  const [members, setMembers]           = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [form, setForm]                 = useState({ taskTitle: "", taskDesc: "", assignedTo: "all", dueDate: "", isBonus: false, suppFiles: "" });
+  const [gradeForm, setGradeForm]       = useState({});
+  const [saving, setSaving]             = useState(false);
+  const [toast, setToast]               = useState("");
+  const [editingTask, setEditingTask]   = useState(null);
+  const [editingGrade, setEditingGrade] = useState(null);
+  const [expandedTask, setExpandedTask] = useState(null);
 
   useEffect(() => {
     if (!team) { setLoading(false); return; }
     Promise.all([
       sheetsAPI.getByTeam("TeamTasks", team.id),
+      sheetsAPI.getByTeam("TaskSubmissions", team.id),
       sheetsAPI.get("Users"),
-    ]).then(([t, u]) => {
-      setTasks(t.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    ]).then(([t, s, u]) => {
+      setTasks((t || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      setSubmissions(s || []);
       if (u) setMembers(u.filter(m => (m.teamId || m.team) === team.id));
       setLoading(false);
     });
@@ -3485,24 +3518,44 @@ function ARTaskManager({ user }) {
     showToast("Task updated ✓");
   };
 
-  const gradeTask = async (task) => {
-    const gf = gradeForm[task.id] || {};
+  const gradeSubmission = async (sub) => {
+    const gf = gradeForm[sub.id] || {};
     if (!gf.score) { showToast("Enter a score first."); return; }
-    await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { score: gf.score, feedback: gf.feedback || "", status: "graded" });
-    setTasks(p => p.map(t => t.id === task.id ? { ...t, status: "graded", score: gf.score, feedback: gf.feedback || "" } : t));
-    showToast("Task graded ✓");
+    await sheetsAPI.updateByMatch("TaskSubmissions", "id", sub.id, { score: gf.score, feedback: gf.feedback || "", status: "graded" });
+    setSubmissions(p => p.map(s => s.id === sub.id ? { ...s, status: "graded", score: gf.score, feedback: gf.feedback || "" } : s));
+    showToast("Graded ✓");
+  };
+
+  const saveGradeEdit = async () => {
+    if (!editingGrade) return;
+    setSaving(true);
+    const gf = gradeForm[editingGrade.id] || {};
+    const newScore    = gf.score    !== undefined ? gf.score    : editingGrade.score;
+    const newFeedback = gf.feedback !== undefined ? gf.feedback : (editingGrade.feedback || "");
+    await sheetsAPI.updateByMatch("TaskSubmissions", "id", editingGrade.id, { score: newScore, feedback: newFeedback });
+    setSubmissions(p => p.map(s => s.id === editingGrade.id ? { ...s, score: newScore, feedback: newFeedback } : s));
+    setEditingGrade(null);
+    setSaving(false);
+    showToast("Grade updated ✓");
   };
 
   if (!team) return <div className="card"><div className="card-body">No team assigned.</div></div>;
   if (loading) return <div className="card"><div className="card-body">Loading…</div></div>;
 
-  const submitted = tasks.filter(t => t.status === "submitted");
-  const assigned  = tasks.filter(t => t.status === "assigned" || t.status === "pending");
-  const graded    = tasks.filter(t => t.status === "graded");
+  const pendingSubs = submissions.filter(s => s.status === "submitted");
+  const gradedSubs  = submissions.filter(s => s.status === "graded");
+  const taskDefs    = tasks.filter(t => t.status !== "draft");
+
+  const subsByTask = {};
+  submissions.forEach(s => { if (!subsByTask[s.taskId]) subsByTask[s.taskId] = []; subsByTask[s.taskId].push(s); });
+
+  const memberCount = members.filter(m => !["associate_researcher","associate","board_admin","admin","mentor"].includes(m.teamRole)).length;
+  const getMemberName = (email) => { const m = members.find(x => x.email === email); return m?.name || m?.Name || email; };
 
   return (
     <div>
       {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "var(--jade)", color: "#fff", padding: "10px 20px", borderRadius: 10, fontWeight: 700, zIndex: 9999 }}>{toast}</div>}
+
       <div className="banner" style={{ marginBottom: 20 }}>
         <div>
           <div className="banner-chip">Team {team.id} — Associate Researcher</div>
@@ -3510,15 +3563,15 @@ function ARTaskManager({ user }) {
           <div className="banner-sub">{team.challenge}</div>
         </div>
         <div className="bstats">
-          <div><div className="bstat-val">{submitted.length}</div><div className="bstat-label">To Grade</div></div>
-          <div><div className="bstat-val">{assigned.length}</div><div className="bstat-label">Assigned</div></div>
-          <div><div className="bstat-val">{graded.length}</div><div className="bstat-label">Graded</div></div>
+          <div><div className="bstat-val" style={{color:"var(--amber)"}}>{pendingSubs.length}</div><div className="bstat-label">To Grade</div></div>
+          <div><div className="bstat-val">{taskDefs.length}</div><div className="bstat-label">Tasks</div></div>
+          <div><div className="bstat-val" style={{color:"var(--jade)"}}>{gradedSubs.length}</div><div className="bstat-label">Graded</div></div>
         </div>
       </div>
 
       {/* Assign task */}
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-header"><div className="card-title">Assign New Task</div></div>
+        <div className="card-header"><div className="card-title">➕ Assign New Task</div></div>
         <div className="card-body">
           <div className="g2">
             <div className="fg"><label className="flabel">Task Title</label><input className="finput" value={form.taskTitle} onChange={e => setForm(f => ({ ...f, taskTitle: e.target.value }))} /></div>
@@ -3530,42 +3583,44 @@ function ARTaskManager({ user }) {
             </div>
           </div>
           <div className="fg"><label className="flabel">Description</label><textarea className="finput ftextarea" style={{ minHeight: 70 }} value={form.taskDesc} onChange={e => setForm(f => ({ ...f, taskDesc: e.target.value }))} /></div>
-          <div className="fg"><label className="flabel">Supplementary Files (Google Drive links, comma-separated)</label><input className="finput" value={form.suppFiles} onChange={e => setForm(f => ({ ...f, suppFiles: e.target.value }))} placeholder="https://drive.google.com/..., https://..." /></div>
+          <div className="fg"><label className="flabel">Supplementary Files (Google Drive links, comma-separated)</label><input className="finput" value={form.suppFiles} onChange={e => setForm(f => ({ ...f, suppFiles: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
           <div className="g2">
             <div className="fg"><label className="flabel">Due Date</label><input type="date" className="finput" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} /></div>
             <div className="fg"><label className="flabel" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-              <input type="checkbox" checked={form.isBonus} onChange={e => setForm(f => ({ ...f, isBonus: e.target.checked }))} /> Mark as Bonus Task (+15 pts)
+              <input type="checkbox" checked={form.isBonus} onChange={e => setForm(f => ({ ...f, isBonus: e.target.checked }))} /> Bonus Task (+15 pts)
             </label></div>
           </div>
           <button className="btn btn-p" onClick={assignTask} disabled={saving}>{saving ? "Saving…" : "Assign Task →"}</button>
         </div>
       </div>
 
-      {/* Grade submitted tasks */}
-      {submitted.length > 0 && (
+      {/* Pending submissions to grade */}
+      {pendingSubs.length > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-header"><div className="card-title">Grade Submissions</div><span className="snav-badge warn">{submitted.length}</span></div>
+          <div className="card-header"><div className="card-title">📥 Submissions to Grade</div><span className="snav-badge warn">{pendingSubs.length}</span></div>
           <div className="card-body" style={{ padding: 0 }}>
-            {submitted.map((t, i) => (
-              <div key={t.id || i} style={{ padding: "16px 20px", borderBottom: "1px solid var(--frost)" }}>
-                <div style={{ display: "flex", gap: 12, marginBottom: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>{t.taskTitle}</div>
-                    <div className="txt-muted" style={{ fontSize: 12 }}>By: {t.assignedTo} · Submitted {t.submittedAt?.split("T")[0]}</div>
-                    {t.submissionLink && <a href={t.submissionLink} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--azure)" }}>View submission ↗</a>}
-                    {t.submissionNote && <div style={{ fontSize: 12, padding: "6px 10px", background: "var(--frost)", borderRadius: 8, marginTop: 6 }}>{t.submissionNote}</div>}
+            {pendingSubs.map((sub, i) => (
+              <div key={sub.id || i} style={{ padding: "16px 20px", borderBottom: "1px solid var(--frost)" }}>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 3 }}>{sub.taskTitle}</div>
+                  <div style={{ fontSize: 12, color: "var(--ink3)" }}>
+                    👤 <strong style={{color:"var(--ink2)"}}>{getMemberName(sub.memberEmail)}</strong> <span style={{opacity:.7}}>({sub.memberEmail})</span> · Submitted {sub.submittedAt?.split("T")[0] || "—"}
+                  </div>
+                  <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+                    {sub.fileLink && <a href={sub.fileLink} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--azure)", fontWeight: 600 }}>📎 View submission ↗</a>}
+                    {sub.suppLinks && sub.suppLinks.split(",").map((f, j) => f.trim() && <a key={j} href={f.trim()} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--azure)" }}>Extra {j+1} ↗</a>)}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
                   <div className="fg" style={{ flex: "0 0 100px", margin: 0 }}>
                     <label className="flabel">Score / 100</label>
-                    <input type="number" min={0} max={100} className="finput" style={{ padding: "7px 10px" }} value={gradeForm[t.id]?.score || ""} onChange={e => setGradeForm(p => ({ ...p, [t.id]: { ...p[t.id], score: e.target.value } }))} />
+                    <input type="number" min={0} max={100} className="finput" style={{ padding: "7px 10px" }} value={gradeForm[sub.id]?.score || ""} onChange={e => setGradeForm(p => ({ ...p, [sub.id]: { ...p[sub.id], score: e.target.value } }))} />
                   </div>
                   <div className="fg" style={{ flex: 1, margin: 0 }}>
                     <label className="flabel">Feedback</label>
-                    <input className="finput" style={{ padding: "7px 10px" }} placeholder="Optional feedback…" value={gradeForm[t.id]?.feedback || ""} onChange={e => setGradeForm(p => ({ ...p, [t.id]: { ...p[t.id], feedback: e.target.value } }))} />
+                    <input className="finput" style={{ padding: "7px 10px" }} placeholder="Optional feedback…" value={gradeForm[sub.id]?.feedback || ""} onChange={e => setGradeForm(p => ({ ...p, [sub.id]: { ...p[sub.id], feedback: e.target.value } }))} />
                   </div>
-                  <button className="btn btn-p btn-sm" style={{ marginBottom: 1 }} onClick={() => gradeTask(t)}>Grade ✓</button>
+                  <button className="btn btn-p btn-sm" style={{ marginBottom: 1, whiteSpace: "nowrap" }} onClick={() => gradeSubmission(sub)}>Grade ✓</button>
                 </div>
               </div>
             ))}
@@ -3573,24 +3628,75 @@ function ARTaskManager({ user }) {
         </div>
       )}
 
-      {/* Existing assigned + submitted + graded */}
+      {/* All Tasks — expandable per-member submission view */}
       <div className="card">
-        <div className="card-header"><div className="card-title">All Tasks</div></div>
+        <div className="card-header"><div className="card-title">📋 All Tasks</div></div>
         <div className="card-body" style={{ padding: 0 }}>
-          {[...assigned, ...submitted, ...graded].map((t, i) => (
-            <div key={t.id || i} style={{ padding: "12px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{t.taskTitle} {t.isBonus === "true" && <span style={{ fontSize: 10, background: "var(--jade)18", color: "var(--jade)", padding: "2px 7px", borderRadius: 10, marginLeft: 6, fontWeight: 700 }}>BONUS</span>}</div>
-                <div className="txt-muted" style={{ fontSize: 11 }}>→ {t.assignedTo === "all" ? "Whole team" : t.assignedTo} · Due {t.dueDate || "TBD"}</div>
+          {taskDefs.length === 0 && <div style={{ padding: 20, color: "var(--ink3)", fontSize: 13 }}>No tasks assigned yet.</div>}
+          {taskDefs.map((t, i) => {
+            const taskSubs    = subsByTask[t.id] || [];
+            const gradedCount = taskSubs.filter(s => s.status === "graded").length;
+            const pendingCount= taskSubs.filter(s => s.status === "submitted").length;
+            const total       = t.assignedTo === "all" ? memberCount : 1;
+            const isExpanded  = expandedTask === t.id;
+            return (
+              <div key={t.id || i}>
+                <div
+                  style={{ padding: "14px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", background: isExpanded ? "var(--snow)" : "transparent" }}
+                  onClick={() => setExpandedTask(isExpanded ? null : t.id)}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>
+                      {t.taskTitle}
+                      {t.isBonus === "true" && <span style={{ fontSize: 10, background: "var(--jade)18", color: "var(--jade)", padding: "2px 7px", borderRadius: 10, marginLeft: 8, fontWeight: 700 }}>BONUS</span>}
+                    </div>
+                    <div className="txt-muted" style={{ fontSize: 11 }}>
+                      {t.assignedTo === "all" ? "Whole team" : getMemberName(t.assignedTo)}
+                      {" · "}Due {t.dueDate || "TBD"}
+                      {" · "}<span style={{ color: pendingCount > 0 ? "var(--amber)" : "var(--ink3)" }}>{pendingCount} pending</span>
+                      {" · "}<span style={{ color: "var(--jade)" }}>{gradedCount} graded</span>
+                      {t.assignedTo === "all" && total > 0 && <span> · {taskSubs.length}/{total} submitted</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                    {pendingCount > 0 && <span className="snav-badge warn">{pendingCount}</span>}
+                    <button className="btn btn-sm" style={{ fontSize: 11, padding: "4px 10px" }} onClick={e => { e.stopPropagation(); setEditingTask({ ...t }); }}>Edit</button>
+                    <span style={{ fontSize: 11, color: "var(--ink3)", userSelect: "none" }}>{isExpanded ? "▲" : "▼"}</span>
+                  </div>
+                </div>
+                {isExpanded && (
+                  <div style={{ background: "#f8f9fc", borderBottom: "1px solid var(--frost)" }}>
+                    {taskSubs.length === 0 ? (
+                      <div style={{ padding: "12px 32px", fontSize: 12, color: "var(--ink3)", fontStyle: "italic" }}>No submissions yet.</div>
+                    ) : taskSubs.map((sub, j) => (
+                      <div key={sub.id || j} style={{ padding: "12px 32px", borderBottom: j < taskSubs.length - 1 ? "1px solid var(--frost)" : "none", display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>{getMemberName(sub.memberEmail)}</div>
+                          <div style={{ fontSize: 11, color: "var(--ink3)" }}>
+                            {sub.memberEmail} · {sub.submittedAt?.split("T")[0] || "—"}
+                            {sub.fileLink && <> · <a href={sub.fileLink} target="_blank" rel="noreferrer" style={{ color: "var(--azure)", fontWeight: 600 }}>View ↗</a></>}
+                            {sub.suppLinks && sub.suppLinks.split(",").map((f, k) => f.trim() && <> · <a key={k} href={f.trim()} target="_blank" rel="noreferrer" style={{ color: "var(--azure)" }}>Extra {k+1} ↗</a></>)}
+                          </div>
+                          {sub.feedback && <div style={{ fontSize: 11, color: "var(--ink3)", marginTop: 2, fontStyle: "italic" }}>"{sub.feedback}"</div>}
+                        </div>
+                        {sub.status === "graded" ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, fontWeight: 700, color: "var(--jade)", lineHeight: 1 }}>{sub.score}</div>
+                              <div style={{ fontSize: 10, color: "var(--ink3)" }}>/ 100</div>
+                            </div>
+                            <button className="btn btn-sm" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => { setEditingGrade(sub); setGradeForm(p => ({ ...p, [sub.id]: { score: sub.score, feedback: sub.feedback || "" } })); }}>Edit Grade</button>
+                          </div>
+                        ) : (
+                          <span className={`badge ${sub.status === "submitted" ? "b-review" : "b-phase"}`}>{sub.status || "assigned"}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              {t.status === "graded"
-                ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, fontWeight: 700, color: "var(--jade)" }}>{t.score}</span>
-                : <span className={`badge ${t.status === "assigned" ? "b-phase" : t.status === "submitted" ? "b-review" : "b-phase"}`}>{t.status}</span>
-              }
-              <button className="btn btn-sm" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => setEditingTask({ ...t })}>Edit</button>
-            </div>
-          ))}
-          {[...assigned, ...submitted, ...graded].length === 0 && <div style={{ padding: 20, color: "var(--ink3)", fontSize: 13 }}>No tasks yet.</div>}
+            );
+          })}
         </div>
       </div>
 
@@ -3608,6 +3714,26 @@ function ARTaskManager({ user }) {
             <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
               <button className="btn btn-p" onClick={editTask} disabled={saving}>{saving ? "Saving…" : "Save Changes"}</button>
               <button className="btn" onClick={() => setEditingTask(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Grade Modal */}
+      {editingGrade && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9998, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 420, boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Edit Grade</div>
+            <div style={{ fontSize: 13, color: "var(--ink3)", marginBottom: 16 }}>{editingGrade.taskTitle} · {getMemberName(editingGrade.memberEmail)}</div>
+            <div className="fg"><label className="flabel">Score / 100</label>
+              <input type="number" min={0} max={100} className="finput" value={gradeForm[editingGrade.id]?.score ?? editingGrade.score ?? ""} onChange={e => setGradeForm(p => ({ ...p, [editingGrade.id]: { ...p[editingGrade.id], score: e.target.value } }))} />
+            </div>
+            <div className="fg"><label className="flabel">Feedback</label>
+              <input className="finput" value={gradeForm[editingGrade.id]?.feedback ?? editingGrade.feedback ?? ""} onChange={e => setGradeForm(p => ({ ...p, [editingGrade.id]: { ...p[editingGrade.id], feedback: e.target.value } }))} />
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              <button className="btn btn-p" onClick={saveGradeEdit} disabled={saving}>{saving ? "Saving…" : "Update Grade"}</button>
+              <button className="btn" onClick={() => setEditingGrade(null)}>Cancel</button>
             </div>
           </div>
         </div>
