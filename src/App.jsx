@@ -2639,16 +2639,29 @@ function MyGradeView({ user }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function TaskSubmissionView({ user }) {
   const team = getTeam(user);
-  const [tasks, setTasks]   = useState([]);
-  const [loading, setLoading] = useState(true);
+  const userEmail = (user.email || "").toLowerCase().trim();
+  const [tasks, setTasks]       = useState([]);
+  const [mySubmissions, setMySubmissions] = useState([]);
+  const [loading, setLoading]   = useState(true);
   const [submitting, setSubmitting] = useState({});
-  const [form, setForm]     = useState({});
-  const [toast, setToast]   = useState("");
+  const [editingSubmission, setEditingSubmission] = useState(null);
+  const [form, setForm]         = useState({});
+  const [editLinks, setEditLinks] = useState({});
+  const [toast, setToast]       = useState("");
 
   useEffect(() => {
     if (!team) { setLoading(false); return; }
-    sheetsAPI.getByTeam("TeamTasks", team.id).then(t => { setTasks(t); setLoading(false); });
+    Promise.all([
+      sheetsAPI.getByTeam("TeamTasks", team.id),
+      sheetsAPI.getByTeam("TaskSubmissions", team.id),
+    ]).then(([t, subs]) => {
+      setTasks(Array.isArray(t) ? t : []);
+      if (Array.isArray(subs)) setMySubmissions(subs.filter(s => (s.memberEmail || "").toLowerCase() === userEmail));
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, [team?.id]);
+
+  const getSub = (taskId) => mySubmissions.find(s => s.taskId === taskId);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
 
@@ -2657,20 +2670,49 @@ function TaskSubmissionView({ user }) {
     const note = form[task.id]?.note || "";
     if (!link) { showToast("Paste a link before submitting."); return; }
     setSubmitting(p => ({ ...p, [task.id]: true }));
-    if (task.id) {
-      await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { status: "submitted", submittedAt: new Date().toISOString(), submissionLink: link, submissionNote: note });
+    const submittedAt = new Date().toISOString();
+    const existing = getSub(task.id);
+    if (existing) {
+      await sheetsAPI.updateByMatch("TaskSubmissions", "id", existing.id, { fileLink: link, suppLinks: note, submittedAt, status: "submitted" });
+      setMySubmissions(p => p.map(s => s.id === existing.id ? { ...s, fileLink: link, suppLinks: note, submittedAt, status: "submitted" } : s));
+    } else {
+      const sub = { id: `SUB${Date.now()}`, taskId: task.id, taskTitle: task.taskTitle || task.title || "", teamId: team?.id || "", memberEmail: userEmail, fileLink: link, suppLinks: note, submittedAt, status: "submitted" };
+      await sheetsAPI.push("TaskSubmissions", sub);
+      setMySubmissions(p => [...p, sub]);
     }
-    setTasks(p => p.map(t => t.id === task.id ? { ...t, status: "submitted", submissionLink: link } : t));
+    // Dual-write to TeamTasks so legacy AR views still work
+    await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { status: "submitted", fileLink: link, submittedBy: userEmail, submittedAt });
+    setTasks(p => p.map(t => t.id === task.id ? { ...t, status: "submitted", fileLink: link, submittedAt } : t));
     setSubmitting(p => ({ ...p, [task.id]: false }));
     showToast("Task submitted ✓");
+  };
+
+  const saveEdit = async (task) => {
+    const existing = getSub(task.id);
+    const link = editLinks[task.id] || existing?.fileLink || task.fileLink || task.submissionLink || "";
+    setSubmitting(p => ({ ...p, [task.id]: true }));
+    const submittedAt = new Date().toISOString();
+    if (existing) {
+      await sheetsAPI.updateByMatch("TaskSubmissions", "id", existing.id, { fileLink: link, submittedAt });
+      setMySubmissions(p => p.map(s => s.id === existing.id ? { ...s, fileLink: link, submittedAt } : s));
+    } else {
+      await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { fileLink: link, submissionLink: link, submittedBy: userEmail, submittedAt });
+    }
+    setEditingSubmission(null);
+    setSubmitting(p => ({ ...p, [task.id]: false }));
+    showToast("Submission updated ✓");
   };
 
   if (!team) return <div className="card"><div className="card-body">No team assigned.</div></div>;
   if (loading) return <div className="card"><div className="card-body">Loading tasks…</div></div>;
 
-  const myTasks = tasks.filter(t => t.assignedTo === user.email || t.assignedTo === "all");
-  const pending = myTasks.filter(t => t.status === "assigned" || t.status === "pending");
-  const done    = myTasks.filter(t => t.status === "submitted" || t.status === "graded");
+  const myTasks = tasks.filter(t => {
+    if (t.status === "draft") return false;
+    const at = (t.assignedTo || "").toLowerCase().trim();
+    return at === "all" || at === userEmail || at.includes(userEmail);
+  });
+  const pending = myTasks.filter(t => !getSub(t.id) && (t.status === "assigned" || t.status === "pending"));
+  const done    = myTasks.filter(t => getSub(t.id) || t.status === "submitted" || t.status === "graded");
 
   return (
     <div>
@@ -2716,19 +2758,45 @@ function TaskSubmissionView({ user }) {
         <div className="card">
           <div className="card-header"><div className="card-title">Completed Tasks</div></div>
           <div className="card-body" style={{ padding: 0 }}>
-            {done.map((t, i) => (
-              <div key={t.id || i} style={{ padding: "14px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{t.taskTitle}</div>
-                  {t.submissionLink && <a href={t.submissionLink} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--azure)" }}>View submission ↗</a>}
-                  {t.feedback && <div style={{ fontSize: 12, marginTop: 4, padding: "6px 10px", background: "var(--frost)", borderRadius: 8 }}>💬 {t.feedback}</div>}
+            {done.map((t, i) => {
+              const sub = getSub(t.id);
+              const fileLink = sub?.fileLink || t.submissionLink || t.fileLink || "";
+              const score = sub?.score || t.score;
+              const feedback = sub?.feedback || t.feedback;
+              const status = sub?.status || t.status;
+              const isEditing = editingSubmission === t.id;
+              return (
+                <div key={t.id || i} style={{ padding: "14px 20px", borderBottom: "1px solid var(--frost)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{t.taskTitle}</div>
+                      {fileLink && !isEditing && <a href={fileLink} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--azure)" }}>View submission ↗</a>}
+                      {feedback && <div style={{ fontSize: 12, marginTop: 4, padding: "6px 10px", background: "var(--frost)", borderRadius: 8 }}>💬 {feedback}</div>}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                      {status === "graded"
+                        ? <div style={{ textAlign: "center" }}><div style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, fontWeight: 700, color: "var(--jade)" }}>{score}</div><div style={{ fontSize: 10, color: "var(--ink3)" }}>/ 100</div></div>
+                        : <span className="badge b-review">Awaiting grade</span>
+                      }
+                      {status !== "graded" && (
+                        <button onClick={() => { setEditingSubmission(isEditing ? null : t.id); setEditLinks(p => ({ ...p, [t.id]: fileLink })); }}
+                          style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--frost)", background: "transparent", cursor: "pointer", color: "var(--ink3)" }}>
+                          {isEditing ? "Cancel" : "Edit"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {isEditing && (
+                    <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                      <input className="finput" style={{ flex: 1, fontSize: 12 }} placeholder="New submission link…" value={editLinks[t.id] || ""} onChange={e => setEditLinks(p => ({ ...p, [t.id]: e.target.value }))} />
+                      <button className="btn btn-p" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => saveEdit(t)} disabled={submitting[t.id]}>
+                        {submitting[t.id] ? "Saving…" : "Save"}
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {t.status === "graded"
-                  ? <div style={{ textAlign: "center" }}><div style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, fontWeight: 700, color: "var(--jade)" }}>{t.score}</div><div style={{ fontSize: 10, color: "var(--ink3)" }}>/ 100</div></div>
-                  : <span className="badge b-review">Awaiting grade</span>
-                }
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
