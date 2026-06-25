@@ -1778,14 +1778,16 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
   };
 
   const saveEditSubmission = async (task) => {
-    const link = fileLinks[task.id] || "";
-    if (!link.trim()) return;
+    const existing = getSub(task.id);
+    const link = fileLinks[task.id] || existing?.fileLink || task.fileLink || task.submissionLink || "";
     setSubmitting(task.id);
     const submittedAt = new Date().toISOString();
-    const existing = getSub(task.id);
     if (existing) {
-      await sheetsAPI.updateByMatch("TaskSubmissions", "id", existing.id, { fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt });
-      setMySubmissions(p => p.map(s => s.id === existing.id ? { ...s, fileLink: link, suppLinks: suppLinks[task.id] || "", submittedAt } : s));
+      await sheetsAPI.updateByMatch("TaskSubmissions", "id", existing.id, { fileLink: link, suppLinks: suppLinks[task.id] || existing.suppLinks || "", submittedAt });
+      setMySubmissions(p => p.map(s => s.id === existing.id ? { ...s, fileLink: link, submittedAt } : s));
+    } else {
+      // Legacy submission lives in TeamTasks — update it there
+      await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { fileLink: link, submissionLink: link, suppLinks: suppLinks[task.id] || task.suppLinks || "", submittedAt });
     }
     setEditingSubmission(null);
     setSubmitting(null);
@@ -2655,8 +2657,6 @@ function TaskSubmissionView({ user }) {
     const note = form[task.id]?.note || "";
     if (!link) { showToast("Paste a link before submitting."); return; }
     setSubmitting(p => ({ ...p, [task.id]: true }));
-    await sheetsAPI.push("TeamTasks", { ...task, status: "submitted", submittedAt: new Date().toISOString(), submissionLink: link, submissionNote: note });
-    // Also update the existing row
     if (task.id) {
       await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { status: "submitted", submittedAt: new Date().toISOString(), submissionLink: link, submissionNote: note });
     }
@@ -3582,7 +3582,7 @@ function ARTaskManager({ user }) {
   const subsByTask = {};
   submissions.forEach(s => { if (!subsByTask[s.taskId]) subsByTask[s.taskId] = []; subsByTask[s.taskId].push(s); });
 
-  const memberCount = members.filter(m => !["associate_researcher","associate","board_admin","admin","mentor"].includes(m.teamRole)).length;
+  const memberCount = members.filter(m => !["associate_researcher","associate","mentor"].includes(m.teamRole)).length;
   const getMemberName = (email) => { const m = members.find(x => x.email === email); return m?.name || m?.Name || email; };
 
   return (
