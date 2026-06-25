@@ -3488,8 +3488,8 @@ function ARTaskManager({ user }) {
   const gradeTask = async (task) => {
     const gf = gradeForm[task.id] || {};
     if (!gf.score) { showToast("Enter a score first."); return; }
-    await sheetsAPI.gradeTask(task.id, gf.score, gf.feedback || "", "graded");
-    setTasks(p => p.map(t => t.id === task.id ? { ...t, status: "graded", score: gf.score, feedback: gf.feedback } : t));
+    await sheetsAPI.updateByMatch("TeamTasks", "id", task.id, { score: gf.score, feedback: gf.feedback || "", status: "graded" });
+    setTasks(p => p.map(t => t.id === task.id ? { ...t, status: "graded", score: gf.score, feedback: gf.feedback || "" } : t));
     showToast("Task graded ✓");
   };
 
@@ -3573,11 +3573,11 @@ function ARTaskManager({ user }) {
         </div>
       )}
 
-      {/* Existing assigned + graded */}
+      {/* Existing assigned + submitted + graded */}
       <div className="card">
         <div className="card-header"><div className="card-title">All Tasks</div></div>
         <div className="card-body" style={{ padding: 0 }}>
-          {[...assigned, ...graded].map((t, i) => (
+          {[...assigned, ...submitted, ...graded].map((t, i) => (
             <div key={t.id || i} style={{ padding: "12px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{t.taskTitle} {t.isBonus === "true" && <span style={{ fontSize: 10, background: "var(--jade)18", color: "var(--jade)", padding: "2px 7px", borderRadius: 10, marginLeft: 6, fontWeight: 700 }}>BONUS</span>}</div>
@@ -3585,12 +3585,12 @@ function ARTaskManager({ user }) {
               </div>
               {t.status === "graded"
                 ? <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, fontWeight: 700, color: "var(--jade)" }}>{t.score}</span>
-                : <span className={`badge ${t.status === "assigned" ? "b-phase" : "b-review"}`}>{t.status}</span>
+                : <span className={`badge ${t.status === "assigned" ? "b-phase" : t.status === "submitted" ? "b-review" : "b-phase"}`}>{t.status}</span>
               }
               <button className="btn btn-sm" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => setEditingTask({ ...t })}>Edit</button>
             </div>
           ))}
-          {[...assigned, ...graded].length === 0 && <div style={{ padding: 20, color: "var(--ink3)", fontSize: 13 }}>No tasks yet.</div>}
+          {[...assigned, ...submitted, ...graded].length === 0 && <div style={{ padding: 20, color: "var(--ink3)", fontSize: 13 }}>No tasks yet.</div>}
         </div>
       </div>
 
