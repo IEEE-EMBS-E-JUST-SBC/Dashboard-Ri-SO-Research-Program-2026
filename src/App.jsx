@@ -1834,7 +1834,7 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
           <div style={{display:"grid",gap:12,paddingLeft:8,borderLeft:`3px solid ${phaseColors[si]}40`}}>
             {stasks.map(task => {
               const sub = getSub(task.id);
-              const effStatus = sub?.status || task.status || "assigned";
+              const effStatus = sub?.status || (task.assignedTo === "all" ? "assigned" : (task.status || "assigned"));
               const effScore = sub?.score;
               const effFeedback = sub?.feedback;
               const effFileLink = sub?.fileLink;
@@ -2586,7 +2586,7 @@ function MyGradeView({ user }) {
           {tasksWithSubs.length === 0
             ? <div style={{ padding: 20, color: "var(--ink3)", fontSize: 13 }}>No tasks assigned yet.</div>
             : tasksWithSubs.map((t, i) => {
-              const effStatus = t.sub?.status || t.status || "assigned";
+              const effStatus = t.sub?.status || (t.assignedTo === "all" ? "assigned" : (t.status || "assigned"));
               const effScore  = t.sub?.score;
               return (
               <div key={t.id || i} style={{ padding: "14px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "center", gap: 12 }}>
@@ -2711,8 +2711,8 @@ function TaskSubmissionView({ user }) {
     const at = (t.assignedTo || "").toLowerCase().trim();
     return at === "all" || at === userEmail || at.includes(userEmail);
   });
-  const pending = myTasks.filter(t => !getSub(t.id) && (t.status === "assigned" || t.status === "pending"));
-  const done    = myTasks.filter(t => getSub(t.id) || t.status === "submitted" || t.status === "graded");
+  const pending = myTasks.filter(t => !getSub(t.id) && (t.assignedTo === "all" || t.status === "assigned" || t.status === "pending"));
+  const done    = myTasks.filter(t => !!getSub(t.id) || (t.assignedTo !== "all" && (t.status === "submitted" || t.status === "graded")));
 
   return (
     <div>
