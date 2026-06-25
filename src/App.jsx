@@ -2559,7 +2559,7 @@ function MyGradeView({ user }) {
       </div>
 
       {/* Task list */}
-      <div className="card">
+      <div className="card" style={{marginBottom:20}}>
         <div className="card-header"><div className="card-title">My Tasks</div><GradePill score={Math.round(totalScore)} /></div>
         <div className="card-body" style={{ padding: 0 }}>
           {myTasks.length === 0
@@ -2582,6 +2582,24 @@ function MyGradeView({ user }) {
               </div>
             ))
           }
+        </div>
+      </div>
+
+      {/* Penalty policy */}
+      <div className="card">
+        <div className="card-header"><div className="card-title" style={{color:"var(--rose)"}}>⚠️ Penalty & Warning Policy</div></div>
+        <div className="card-body" style={{padding:0}}>
+          {[
+            { icon:"📅", text:"Missing a meeting without a prior excuse → 1 Warning" },
+            { icon:"📋", text:"Missing a task deadline without a prior excuse → 1 Warning" },
+            { icon:"🟡", text:"Using 2 excuses (meeting or task) → 1 Warning" },
+            { icon:"🔴", text:"Accumulating 3 Warnings → Termination from the program" },
+          ].map((item,i) => (
+            <div key={i} style={{display:"flex",gap:14,padding:"13px 20px",borderBottom:i<3?"1px solid var(--frost)":"none",alignItems:"center"}}>
+              <span style={{fontSize:20,flexShrink:0}}>{item.icon}</span>
+              <span style={{fontSize:13,color:"var(--ink2)",lineHeight:1.5}}>{item.text}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -2791,9 +2809,7 @@ function RoleGuidelinesView({ user }) {
     : roleRaw === "board_admin" || roleRaw === "team_admin" ? "board_admin"
     : roleRaw === "mentor" ? "mentor"
     : "team_member";
-  const [activeTab, setActiveTab] = useState("mine");
   const myGuide = ROLE_GUIDELINES[roleKey];
-  const allRoles = Object.entries(ROLE_GUIDELINES);
 
   const GuideCard = ({ guide }) => (
     <div>
@@ -2863,33 +2879,28 @@ function RoleGuidelinesView({ user }) {
 
   return (
     <div>
-      <div style={{display:"flex",gap:8,marginBottom:20,background:"var(--snow)",padding:5,borderRadius:12,border:"1px solid var(--frost)"}}>
-        <button className={`miccai-tab ${activeTab==="mine"?"active":""}`} onClick={()=>setActiveTab("mine")}>
-          {myGuide.icon} My Role ({myGuide.label})
-        </button>
-        <button className={`miccai-tab ${activeTab==="all"?"active":""}`} onClick={()=>setActiveTab("all")}>
-          👥 All Roles
-        </button>
+      <div style={{padding:"10px 16px",borderRadius:10,background:`${myGuide.color}10`,border:`1px solid ${myGuide.color}30`,fontSize:13,color:myGuide.color,fontWeight:600,marginBottom:20}}>
+        📌 Your role: <strong>{myGuide.label}</strong> — {myGuide.tagline}
       </div>
+      <GuideCard guide={myGuide} />
 
-      {activeTab === "mine" && (
-        <div className="miccai-fadein">
-          <div style={{padding:"10px 16px",borderRadius:10,background:"rgba(91,59,245,.06)",border:"1px solid rgba(91,59,245,.2)",fontSize:13,color:"var(--violet)",fontWeight:600,marginBottom:20}}>
-            📌 Showing your role: <strong>{myGuide.label}</strong>
-          </div>
-          <GuideCard guide={myGuide} />
-        </div>
-      )}
-
-      {activeTab === "all" && (
-        <div className="miccai-fadein">
-          {allRoles.map(([key, guide]) => (
-            <div key={key} style={{marginBottom:32}}>
-              <GuideCard guide={guide} />
+      {/* Penalty & Warning Policy — shown to all */}
+      <div className="card" style={{marginTop:20}}>
+        <div className="card-header"><div className="card-title" style={{color:"var(--rose)"}}>⚠️ Penalty & Warning Policy</div></div>
+        <div className="card-body" style={{padding:0}}>
+          {[
+            { icon:"📅", text:"Missing a meeting without a prior excuse → 1 Warning" },
+            { icon:"📋", text:"Missing a task deadline without a prior excuse → 1 Warning" },
+            { icon:"🟡", text:"Using 2 excuses (meeting or task) → 1 Warning" },
+            { icon:"🔴", text:"Accumulating 3 Warnings → Termination from the program" },
+          ].map((item,i) => (
+            <div key={i} style={{display:"flex",gap:14,padding:"13px 20px",borderBottom:i<3?"1px solid var(--frost)":"none",alignItems:"center"}}>
+              <span style={{fontSize:20,flexShrink:0}}>{item.icon}</span>
+              <span style={{fontSize:13,color:"var(--ink2)",lineHeight:1.5}}>{item.text}</span>
             </div>
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
