@@ -3131,7 +3131,7 @@ function MeetingNotesView({ user }) {
   const [votes, setVotes]         = useState([]);
   const [loading, setLoading]     = useState(true);
   const [selected, setSelected]   = useState(null);
-  const [newForm, setNewForm]     = useState({ title: "", date: "", time: "", meetLink: "", attendanceSheet: "", recording: "", minutesFile: "", notes: "", actionItems: "", votingOpen: false, votingSlots: "" });
+  const [newForm, setNewForm]     = useState({ title: "", date: "", time: "", meetLink: "", attendanceSheet: "", recording: "", minutesFile: "", notes: "", actionItems: "" });
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving]       = useState(false);
   const [toast, setToast]         = useState("");
@@ -3164,15 +3164,14 @@ function MeetingNotesView({ user }) {
       recording: newForm.recording || "",
       minutesFile: newForm.minutesFile || "",
       notes: newForm.notes, actionItems: newForm.actionItems,
-      attendees: "", votingOpen: newForm.votingOpen ? "true" : "false",
-      votingSlots: newForm.votingSlots, createdBy: user.email,
+      attendees: "", createdBy: user.email,
       createdAt: new Date().toISOString(),
     };
     await sheetsAPI.push("MeetingNotes", record);
     setMeetings(p => [record, ...p]);
     setSelected(record.id);
     setShowCreate(false);
-    setNewForm({ title: "", date: "", time: "", meetLink: "", attendanceSheet: "", recording: "", minutesFile: "", notes: "", actionItems: "", votingOpen: false, votingSlots: "" });
+    setNewForm({ title: "", date: "", time: "", meetLink: "", attendanceSheet: "", recording: "", minutesFile: "", notes: "", actionItems: "" });
     setSaving(false);
     showToast("Meeting note saved ✓");
   };
@@ -3215,52 +3214,40 @@ function MeetingNotesView({ user }) {
         </div>
       )}
 
+      {/* New meeting modal */}
+      {showCreate && canManage && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9998, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 620, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>📅 New Meeting</div>
+              <button onClick={() => setShowCreate(false)} style={{ border: "none", background: "none", fontSize: 20, cursor: "pointer", color: "var(--ink3)" }}>×</button>
+            </div>
+            <div className="fg"><label className="flabel">Title *</label><input className="finput" value={newForm.title} onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))} /></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div className="fg"><label className="flabel">Date *</label><input type="date" className="finput" value={newForm.date} onChange={e => setNewForm(f => ({ ...f, date: e.target.value }))} /></div>
+              <div className="fg"><label className="flabel">Time (GMT+3)</label><input type="time" className="finput" value={newForm.time} onChange={e => setNewForm(f => ({ ...f, time: e.target.value }))} /></div>
+            </div>
+            <div className="fg"><label className="flabel">🎥 Google Meet / Zoom Link</label><input className="finput" placeholder="https://meet.google.com/..." value={newForm.meetLink} onChange={e => setNewForm(f => ({ ...f, meetLink: e.target.value }))} /></div>
+            <div className="fg"><label className="flabel">📋 Attendance Sheet Link</label><input className="finput" placeholder="Google Sheet or Drive link..." value={newForm.attendanceSheet} onChange={e => setNewForm(f => ({ ...f, attendanceSheet: e.target.value }))} /></div>
+            <div className="fg"><label className="flabel">🎬 Recording Link</label><input className="finput" placeholder="Google Drive / YouTube link..." value={newForm.recording} onChange={e => setNewForm(f => ({ ...f, recording: e.target.value }))} /></div>
+            <div className="fg"><label className="flabel">📄 Minutes File Link</label><input className="finput" placeholder="Google Doc link..." value={newForm.minutesFile} onChange={e => setNewForm(f => ({ ...f, minutesFile: e.target.value }))} /></div>
+            <div className="fg"><label className="flabel">Meeting Notes</label><textarea className="finput ftextarea" style={{ minHeight: 70 }} value={newForm.notes} onChange={e => setNewForm(f => ({ ...f, notes: e.target.value }))} /></div>
+            <div className="fg"><label className="flabel">Action Items (one per line)</label><textarea className="finput ftextarea" style={{ minHeight: 50 }} value={newForm.actionItems} onChange={e => setNewForm(f => ({ ...f, actionItems: e.target.value }))} /></div>
+            <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+              <button className="btn btn-p" onClick={createMeeting} disabled={saving}>{saving ? "Saving…" : "Save Meeting"}</button>
+              <button className="btn" onClick={() => setShowCreate(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 20 }}>
         {/* Sidebar: meeting list */}
         <div className="card" style={{ alignSelf: "start" }}>
           <div className="card-header">
             <div className="card-title">Meetings</div>
-            {canManage && <button className="btn btn-p btn-sm" onClick={() => setShowCreate(s => !s)}>+ New</button>}
+            {canManage && <button className="btn btn-p btn-sm" onClick={() => setShowCreate(true)}>+ New</button>}
           </div>
-          {showCreate && canManage && (
-            <div className="card-body" style={{ borderBottom: "1px solid var(--frost)" }}>
-              <div className="fg"><label className="flabel">Title</label><input className="finput" value={newForm.title} onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))} /></div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                <div className="fg"><label className="flabel">Date</label><input type="date" className="finput" value={newForm.date} onChange={e => setNewForm(f => ({ ...f, date: e.target.value }))} /></div>
-                <div className="fg"><label className="flabel">Time (GMT+3)</label><input type="time" className="finput" value={newForm.time} onChange={e => setNewForm(f => ({ ...f, time: e.target.value }))} /></div>
-              </div>
-              <div className="fg">
-                <label className="flabel">Google Meet / Zoom Link</label>
-                <div style={{position:"relative"}}>
-                  <span style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",fontSize:16}}>🎥</span>
-                  <input className="finput" style={{paddingLeft:34}} placeholder="https://meet.google.com/..." value={newForm.meetLink} onChange={e => setNewForm(f => ({ ...f, meetLink: e.target.value }))} />
-                </div>
-              </div>
-              <div className="fg">
-                <label className="flabel">📋 Attendance Sheet Link</label>
-                <input className="finput" placeholder="Google Sheet or Drive link..." value={newForm.attendanceSheet} onChange={e=>setNewForm(f=>({...f,attendanceSheet:e.target.value}))} />
-              </div>
-              <div className="fg">
-                <label className="flabel">🎬 Recording Link</label>
-                <input className="finput" placeholder="Google Drive / YouTube link..." value={newForm.recording} onChange={e=>setNewForm(f=>({...f,recording:e.target.value}))} />
-              </div>
-              <div className="fg">
-                <label className="flabel">📄 Minutes File Link</label>
-                <input className="finput" placeholder="Google Doc (agenda, discussion, action plan)..." value={newForm.minutesFile} onChange={e=>setNewForm(f=>({...f,minutesFile:e.target.value}))} />
-              </div>
-              <div className="fg"><label className="flabel">Meeting Notes</label><textarea className="finput ftextarea" style={{ minHeight: 70 }} value={newForm.notes} onChange={e => setNewForm(f => ({ ...f, notes: e.target.value }))} /></div>
-              <div className="fg"><label className="flabel">Action Items (one per line)</label><textarea className="finput ftextarea" style={{ minHeight: 50 }} value={newForm.actionItems} onChange={e => setNewForm(f => ({ ...f, actionItems: e.target.value }))} /></div>
-              <div className="fg">
-                <label className="flabel" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-                  <input type="checkbox" checked={newForm.votingOpen} onChange={e => setNewForm(f => ({ ...f, votingOpen: e.target.checked }))} /> Open voting for next meeting slot
-                </label>
-              </div>
-              {newForm.votingOpen && (
-                <div className="fg"><label className="flabel">Voting slots (comma-separated, e.g. "Mon 8pm, Tue 6pm")</label><input className="finput" value={newForm.votingSlots} onChange={e => setNewForm(f => ({ ...f, votingSlots: e.target.value }))} /></div>
-              )}
-              <button className="btn btn-p" onClick={createMeeting} disabled={saving}>{saving ? "Saving…" : "Save Meeting"}</button>
-            </div>
-          )}
           <div style={{ padding: 0 }}>
             {meetings.length === 0 && <div style={{ padding: 16, fontSize: 13, color: "var(--ink3)" }}>No meetings yet.</div>}
             {meetings.map(m => (
@@ -3268,7 +3255,6 @@ function MeetingNotesView({ user }) {
                 style={{ padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--frost)", background: selected === m.id ? "rgba(91,59,245,.06)" : "white", borderLeft: selected === m.id ? "3px solid var(--violet)" : "3px solid transparent" }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{m.title}</div>
                 <div style={{ fontSize: 11, color: "var(--ink3)" }}>{m.meetingDate}</div>
-                {m.votingOpen === "true" && <span style={{ fontSize: 10, background: "var(--amber)18", color: "var(--amber)", padding: "1px 8px", borderRadius: 10, fontWeight: 700 }}>🗳 Voting open</span>}
               </div>
             ))}
           </div>
@@ -3388,8 +3374,8 @@ function MeetingNotesView({ user }) {
               </div>
             </div>
 
-            {/* Voting panel */}
-            {activeMeeting.votingOpen === "true" && activeMeeting.votingSlots && (
+            {/* Voting panel — removed */}
+            {false && activeMeeting.votingOpen === "true" && activeMeeting.votingSlots && (
               <div className="card">
                 <div className="card-header"><div className="card-title">🗳 Vote for Next Meeting Slot</div></div>
                 <div className="card-body">
@@ -3427,16 +3413,31 @@ function MeetingNotesView({ user }) {
 // ─────────────────────────────────────────────────────────────────────────────
 //  WEEKLY FEEDBACK VIEW  (member)
 // ─────────────────────────────────────────────────────────────────────────────
+const StarPicker = ({ value, onChange, label }) => (
+  <div className="fg">
+    <label className="flabel">{label}</label>
+    <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+      {[1,2,3,4,5].map(n => (
+        <button key={n} type="button" onClick={() => onChange(n)}
+          style={{ fontSize: 24, background: "none", border: "none", cursor: "pointer", opacity: n <= value ? 1 : 0.25, transition: "opacity .15s", lineHeight: 1 }}>⭐</button>
+      ))}
+      <span style={{ alignSelf: "center", fontSize: 12, color: "var(--ink3)", marginLeft: 4 }}>{value}/5</span>
+    </div>
+  </div>
+);
+
 function WeeklyFeedbackView({ user }) {
   const team = getTeam(user);
-  const [week, setWeek]         = useState("");
-  const [rating, setRating]     = useState(5);
-  const [wentWell, setWentWell] = useState("");
-  const [improve, setImprove]   = useState("");
+  const [week, setWeek]               = useState("");
+  const [sessionRating, setSessionRating] = useState(4);
+  const [arRating, setArRating]       = useState(4);
+  const [programRating, setProgramRating] = useState(4);
+  const [wentWell, setWentWell]       = useState("");
+  const [improve, setImprove]         = useState("");
   const [messageToAR, setMessageToAR] = useState("");
   const [submitting, setSubmitting]   = useState(false);
-  const [toast, setToast]       = useState("");
-  const [past, setPast]         = useState([]);
+  const [toast, setToast]             = useState("");
+  const [past, setPast]               = useState([]);
   const [loadingPast, setLoadingPast] = useState(true);
 
   useEffect(() => {
@@ -3450,24 +3451,21 @@ function WeeklyFeedbackView({ user }) {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3500); };
 
+  const reset = () => { setWeek(""); setSessionRating(4); setArRating(4); setProgramRating(4); setWentWell(""); setImprove(""); setMessageToAR(""); };
+
   const submit = async () => {
     if (!week) { showToast("Please enter a week number."); return; }
     setSubmitting(true);
     const record = {
-      id: `FB${Date.now()}`,
-      teamId: team.id,
-      submitterEmail: user.email,
-      submitterName: user.name || user.Name || "",
-      week,
-      rating,
-      wentWell,
-      improve,
-      messageToAR,
+      id: `FB${Date.now()}`, teamId: team.id,
+      submitterEmail: user.email, submitterName: user.name || user.Name || "",
+      week, sessionRating, arRating, programRating,
+      wentWell, improve, messageToAR,
       submittedAt: new Date().toISOString(),
     };
     await sheetsAPI.push("WeeklyFeedback", record);
     setPast(p => [record, ...p]);
-    setWeek(""); setRating(5); setWentWell(""); setImprove(""); setMessageToAR("");
+    reset();
     setSubmitting(false);
     showToast("Feedback submitted ✓");
   };
@@ -3478,24 +3476,27 @@ function WeeklyFeedbackView({ user }) {
     <div>
       {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "var(--jade)", color: "#fff", padding: "10px 20px", borderRadius: 10, fontWeight: 700, zIndex: 9999 }}>{toast}</div>}
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-header"><div className="card-title">📝 Weekly Feedback</div></div>
+        <div className="card-header"><div className="card-title">📝 Weekly Feedback — Week <input type="number" min={1} max={52} style={{ width: 56, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--frost)", fontSize: 14, fontWeight: 700, textAlign: "center", fontFamily: "inherit" }} value={week} onChange={e => setWeek(e.target.value)} placeholder="#" /></div></div>
         <div className="card-body">
-          <div className="g2">
-            <div className="fg">
-              <label className="flabel">Week Number</label>
-              <input type="number" min={1} className="finput" value={week} onChange={e => setWeek(e.target.value)} placeholder="e.g. 3" />
-            </div>
-            <div className="fg">
-              <label className="flabel">Rating (1–5)</label>
-              <select className="finput fselect" value={rating} onChange={e => setRating(Number(e.target.value))}>
-                {[1,2,3,4,5].map(n => <option key={n} value={n}>{n} {"⭐".repeat(n)}</option>)}
-              </select>
-            </div>
+
+          {/* Section 1: This week */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>This Week's Session</div>
+          <StarPicker value={sessionRating} onChange={setSessionRating} label="How was this week's session overall?" />
+          <div className="g2" style={{ marginTop: 4 }}>
+            <div className="fg"><label className="flabel">✅ What went well?</label><textarea className="finput ftextarea" style={{ minHeight: 60 }} value={wentWell} onChange={e => setWentWell(e.target.value)} placeholder="Topics covered, tasks completed, team collaboration…" /></div>
+            <div className="fg"><label className="flabel">🔧 What could be improved?</label><textarea className="finput ftextarea" style={{ minHeight: 60 }} value={improve} onChange={e => setImprove(e.target.value)} placeholder="Pacing, resources, explanations…" /></div>
           </div>
-          <div className="fg"><label className="flabel">What went well?</label><textarea className="finput ftextarea" style={{ minHeight: 70 }} value={wentWell} onChange={e => setWentWell(e.target.value)} /></div>
-          <div className="fg"><label className="flabel">What could be improved?</label><textarea className="finput ftextarea" style={{ minHeight: 70 }} value={improve} onChange={e => setImprove(e.target.value)} /></div>
-          <div className="fg"><label className="flabel">Message to Associate Researcher</label><textarea className="finput ftextarea" style={{ minHeight: 70 }} value={messageToAR} onChange={e => setMessageToAR(e.target.value)} /></div>
-          <button className="btn btn-p" onClick={submit} disabled={submitting}>{submitting ? "Submitting…" : "Submit Feedback →"}</button>
+
+          {/* Section 2: AR evaluation */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: 1, margin: "20px 0 12px" }}>Associate Researcher Evaluation</div>
+          <StarPicker value={arRating} onChange={setArRating} label="How would you rate your AR's support & communication?" />
+          <div className="fg"><label className="flabel">💬 Message / Suggestion for your AR</label><textarea className="finput ftextarea" style={{ minHeight: 60 }} value={messageToAR} onChange={e => setMessageToAR(e.target.value)} placeholder="Anything you'd like them to know or do differently…" /></div>
+
+          {/* Section 3: Program evaluation */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: 1, margin: "20px 0 12px" }}>Program Evaluation</div>
+          <StarPicker value={programRating} onChange={setProgramRating} label="How satisfied are you with the research program overall?" />
+
+          <button className="btn btn-p" style={{ marginTop: 8 }} onClick={submit} disabled={submitting || !week}>{submitting ? "Submitting…" : "Submit Feedback →"}</button>
         </div>
       </div>
 
@@ -3509,7 +3510,12 @@ function WeeklyFeedbackView({ user }) {
                   <span style={{ fontSize: 13, fontWeight: 700 }}>Week {fb.week}</span>
                   <span style={{ fontSize: 12, color: "var(--ink3)" }}>{fb.submittedAt?.split("T")[0]}</span>
                 </div>
-                <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 4 }}>Rating: {"⭐".repeat(Number(fb.rating) || 0)}</div>
+                <div style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--ink3)", marginBottom: 6, flexWrap: "wrap" }}>
+                  {fb.sessionRating && <span>Session {"⭐".repeat(Number(fb.sessionRating))}</span>}
+                  {fb.arRating && <span>AR {"⭐".repeat(Number(fb.arRating))}</span>}
+                  {fb.programRating && <span>Program {"⭐".repeat(Number(fb.programRating))}</span>}
+                  {!fb.sessionRating && fb.rating && <span>Rating {"⭐".repeat(Number(fb.rating))}</span>}
+                </div>
                 {fb.wentWell && <div style={{ fontSize: 12, color: "var(--ink2)", marginBottom: 2 }}>✅ {fb.wentWell}</div>}
                 {fb.improve && <div style={{ fontSize: 12, color: "var(--ink2)", marginBottom: 2 }}>🔧 {fb.improve}</div>}
                 {fb.messageToAR && <div style={{ fontSize: 12, color: "var(--azure)" }}>💬 {fb.messageToAR}</div>}
@@ -3970,6 +3976,8 @@ function TeamGradeOverview({ user }) {
   const [selected, setSelected] = useState(null);  // selected member email
   const [tab, setTab]           = useState("grades"); // grades | tasks | profile
 
+  const [feedbacks, setFeedbacks] = useState([]);
+
   useEffect(() => {
     if (!team) { setLoading(false); return; }
     Promise.all([
@@ -3977,10 +3985,12 @@ function TeamGradeOverview({ user }) {
       sheetsAPI.getByTeam("MeetingNotes",   team.id),
       sheetsAPI.getByTeam("ExcuseRequests", team.id),
       sheetsAPI.get("Users"),
-    ]).then(([t, m, ex, u]) => {
+      sheetsAPI.getByTeam("WeeklyFeedback", team.id),
+    ]).then(([t, m, ex, u, fb]) => {
       setTasks(t || []);
       setMeetings(m || []);
       setExcuses(ex || []);
+      setFeedbacks(fb || []);
       const members = (u || []).filter(mem =>
         (mem.teamId || mem.team) === team.id &&
         mem.teamRole !== "associate_researcher" &&
@@ -4032,7 +4042,69 @@ function TeamGradeOverview({ user }) {
         </div>
       </div>
 
+      {/* ── Per-member overview ── */}
+      <div className="card">
+        <div className="card-header"><div className="card-title">👥 Team Members</div></div>
+        <div className="card-body" style={{ padding: 0 }}>
+          {allUsers.length === 0 && <div style={{ padding: 20, color: "var(--ink3)", fontSize: 13 }}>No members yet.</div>}
+          {allUsers.map((m, i) => {
+            const sc        = computeScore(m);
+            const submitted = tasks.filter(t => {
+              const at = (t.assignedTo || "").toLowerCase().trim();
+              return (at === "all" || at === (m.email || "").toLowerCase()) && (t.status === "submitted" || t.status === "graded");
+            }).length;
+            const totalTasks = tasks.filter(t => {
+              const at = (t.assignedTo || "").toLowerCase().trim();
+              return at === "all" || at === (m.email || "").toLowerCase();
+            }).length;
+            const memberFbs = feedbacks.filter(fb => (fb.submitterEmail || "").toLowerCase() === (m.email || "").toLowerCase());
+            const avgFbRating = memberFbs.length
+              ? (memberFbs.reduce((a, fb) => a + Number(fb.sessionRating || fb.rating || 0), 0) / memberFbs.length).toFixed(1)
+              : null;
+            const gc = gradeColor(sc.total);
+            return (
+              <div key={m.email || i} style={{ padding: "16px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                {/* Avatar + name */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 180 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: `${gc}20`, border: `2px solid ${gc}`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14, color: gc, flexShrink: 0 }}>
+                    {(m.name || m.Name || m.email || "?")[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{m.name || m.Name || m.email}</div>
+                    <div style={{ fontSize: 11, color: "var(--ink3)" }}>{m.teamRole || m.role || "member"}</div>
+                  </div>
+                </div>
 
+                {/* Stats chips */}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", flex: 1 }}>
+                  <div style={{ textAlign: "center", padding: "6px 14px", borderRadius: 10, background: "var(--snow)", border: "1px solid var(--frost)" }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: sc.attendPct >= 75 ? "var(--jade)" : "var(--amber)" }}>{sc.attended}/{meetings.length}</div>
+                    <div style={{ fontSize: 10, color: "var(--ink3)", marginTop: 1 }}>Meetings</div>
+                  </div>
+                  <div style={{ textAlign: "center", padding: "6px 14px", borderRadius: 10, background: "var(--snow)", border: "1px solid var(--frost)" }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "var(--violet)" }}>{submitted}/{totalTasks}</div>
+                    <div style={{ fontSize: 10, color: "var(--ink3)", marginTop: 1 }}>Tasks</div>
+                  </div>
+                  <div style={{ textAlign: "center", padding: "6px 14px", borderRadius: 10, background: "var(--snow)", border: "1px solid var(--frost)" }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: sc.taskAvg >= 75 ? "var(--jade)" : sc.taskAvg > 0 ? "var(--amber)" : "var(--ink3)" }}>{sc.taskAvg > 0 ? sc.taskAvg : "—"}</div>
+                    <div style={{ fontSize: 10, color: "var(--ink3)", marginTop: 1 }}>Avg Score</div>
+                  </div>
+                  <div style={{ textAlign: "center", padding: "6px 14px", borderRadius: 10, background: "var(--snow)", border: "1px solid var(--frost)" }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "var(--azure)" }}>{avgFbRating ? `${avgFbRating}★` : memberFbs.length > 0 ? memberFbs.length : "—"}</div>
+                    <div style={{ fontSize: 10, color: "var(--ink3)", marginTop: 1 }}>Feedback</div>
+                  </div>
+                </div>
+
+                {/* Total score badge */}
+                <div style={{ textAlign: "center", flexShrink: 0 }}>
+                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 22, fontWeight: 900, color: gc, lineHeight: 1 }}>{sc.total}</div>
+                  <div style={{ fontSize: 10, color: "var(--ink3)" }}>{gradeLabel(sc.total)}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
