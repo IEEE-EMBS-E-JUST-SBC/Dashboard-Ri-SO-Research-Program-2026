@@ -2091,8 +2091,8 @@ function MICCAIChallenges({ user }) {
       {/* Main Navigation Tabs */}
       <div style={{display:"flex",gap:6,background:"var(--snow)",padding:5,borderRadius:12,border:"1px solid var(--frost)",marginBottom:20,flexWrap:"wrap"}}>
         {(isAuthorized
-          ? [["overview","🎯","Overview"]]
-          : [["mytasks","✅","My Tasks"],["feedback","📝","Weekly Feedback"]]
+          ? [["overview","🎯","Overview"],["guidelines","📖","Guidelines"]]
+          : [["mytasks","✅","My Tasks"],["feedback","📝","Weekly Feedback"],["guidelines","📖","Guidelines"]]
         ).map(([id,ic,lb]) => (
           <button key={id} className={`miccai-tab ${mainTab===id?"active":""}`} onClick={() => setMainTab(id)}>{ic} {lb}</button>
         ))}
@@ -2140,6 +2140,13 @@ function MICCAIChallenges({ user }) {
       {mainTab === "feedback" && (
         <div className="miccai-fadein">
           <WeeklyFeedbackView user={user} />
+        </div>
+      )}
+
+      {/* ── TAB: GUIDELINES (all roles) ── */}
+      {mainTab === "guidelines" && (
+        <div className="miccai-fadein">
+          <RoleGuidelinesView user={user} />
         </div>
       )}
 
@@ -2686,33 +2693,249 @@ function TaskSubmissionView({ user }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  ROLE GUIDELINES  (interactive, role-aware)
+// ─────────────────────────────────────────────────────────────────────────────
+const ROLE_GUIDELINES = {
+  mentor: {
+    label: "Mentor",
+    icon: "🎓",
+    color: "#5B3BF5",
+    tagline: "Supervisor and strategic guide",
+    responsibilities: [
+      "Sets the research direction and validates the team's approach at each milestone",
+      "Reviews and confirms decisions made by the Associate Researcher before they are finalized",
+      "Attends bi-weekly sprint reviews and provides strategic feedback",
+      "Identifies and resolves blockers that the team cannot handle on its own",
+      "Signs off on final submissions, Docker containers, and challenge deliverables",
+      "Ensures clinical and scientific integrity is maintained throughout the project",
+    ],
+    doesNot: [
+      "Write code or run experiments directly",
+      "Assign or manage day-to-day tasks (delegated to the Associate Researcher)",
+      "Handle logistics or administrative matters (delegated to Admin)",
+    ],
+    escalation: null,
+    extra: null,
+  },
+  associate_researcher: {
+    label: "Associate Researcher",
+    icon: "🔬",
+    color: "#0EA5C5",
+    tagline: "Technical lead and primary bridge between the team and the Mentor",
+    responsibilities: [
+      "Works hands-on with the team across all sprint milestones",
+      "Assigns tasks to team members, tracks progress, and unblocks day-to-day issues",
+      "Runs experiments, reviews code, and validates results before escalating to the Mentor",
+      "Prepares and presents sprint updates to the Mentor for confirmation and validation",
+      "Ensures the team follows the sprint plan and meets milestone deadlines",
+      "Drafts the challenge submission report and paper methodology sections",
+    ],
+    doesNot: null,
+    escalation: null,
+    extra: {
+      title: "Relationship with Mentor",
+      points: [
+        "Surfaces findings, results, and decisions to the Mentor",
+        "The Mentor confirms, redirects, or validates — the Associate Researcher executes",
+        "Nothing is finalized without Mentor confirmation on key decisions",
+      ],
+    },
+  },
+  board_admin: {
+    label: "Admin (Board Member)",
+    icon: "📋",
+    color: "#0F9F6E",
+    tagline: "Logistics coordinator and operational support",
+    responsibilities: [
+      "Handles all logistical matters: compute resource requests, access provisioning, scheduling",
+      "Maintains the team's project board and tracks task completion status",
+      "Coordinates team meetings, communicates deadlines, and sends progress reports to program admins",
+      "Manages platform submissions (Codabench, Grand-Challenge, Synapse) from a logistics standpoint",
+      "Acts as the point of contact between the team and the broader IEEE E-JUST EMBS SBC board",
+      "Escalates operational blockers (access issues, resource shortages) to the appropriate authority",
+    ],
+    doesNot: [
+      "Make technical decisions or validate research output",
+      "Supervise or assess team members' technical work",
+    ],
+    escalation: null,
+    extra: null,
+  },
+  team_member: {
+    label: "Team Member (TM1–TM8)",
+    icon: "⚡",
+    color: "#E53E5C",
+    tagline: "Core researcher and implementer",
+    responsibilities: [
+      "Executes assigned tasks within their sprint milestone as directed by the Associate Researcher",
+      "Implements, tests, and documents their component of the pipeline",
+      "Submits completed work (with a file link) through the dashboard for review",
+      "Attends team standups and flags blockers immediately — does not stay stuck for more than one day",
+      "Iterates based on feedback from the Associate Researcher or Mentor after review",
+      "Contributes to the final paper and challenge submission as directed",
+    ],
+    doesNot: null,
+    escalation: [
+      { from: "Blocker on a task", to: "Raise immediately to the Associate Researcher" },
+      { from: "AR cannot resolve", to: "Associate Researcher escalates to the Mentor" },
+      { from: "Logistical issue (access, scheduling)", to: "Raise to Admin" },
+    ],
+    extra: null,
+  },
+};
+
+function RoleGuidelinesView({ user }) {
+  const roleRaw = (user.teamRole || user.role || "").toLowerCase().trim();
+  const roleKey = roleRaw.startsWith("tm") ? "team_member"
+    : roleRaw === "associate_researcher" || roleRaw === "associate" ? "associate_researcher"
+    : roleRaw === "board_admin" || roleRaw === "team_admin" ? "board_admin"
+    : roleRaw === "mentor" ? "mentor"
+    : "team_member";
+  const [activeTab, setActiveTab] = useState("mine");
+  const myGuide = ROLE_GUIDELINES[roleKey];
+  const allRoles = Object.entries(ROLE_GUIDELINES);
+
+  const GuideCard = ({ guide }) => (
+    <div>
+      <div style={{padding:"18px 20px",borderRadius:14,background:`${guide.color}10`,border:`1px solid ${guide.color}30`,marginBottom:20,display:"flex",alignItems:"center",gap:14}}>
+        <span style={{fontSize:36}}>{guide.icon}</span>
+        <div>
+          <div style={{fontSize:16,fontWeight:800,color:guide.color}}>{guide.label}</div>
+          <div style={{fontSize:13,color:"var(--ink2)",marginTop:2}}>{guide.tagline}</div>
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-header"><div className="card-title" style={{color:guide.color}}>✅ Responsibilities</div></div>
+        <div className="card-body" style={{padding:0}}>
+          {guide.responsibilities.map((r,i) => (
+            <div key={i} style={{display:"flex",gap:12,padding:"12px 20px",borderBottom:i<guide.responsibilities.length-1?"1px solid var(--frost)":"none",alignItems:"flex-start"}}>
+              <span style={{color:guide.color,fontWeight:800,flexShrink:0,marginTop:1}}>→</span>
+              <span style={{fontSize:13,color:"var(--ink2)",lineHeight:1.6}}>{r}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {guide.doesNot && (
+        <div className="card" style={{marginBottom:16}}>
+          <div className="card-header"><div className="card-title" style={{color:"var(--rose)"}}>🚫 Does Not</div></div>
+          <div className="card-body" style={{padding:0}}>
+            {guide.doesNot.map((r,i) => (
+              <div key={i} style={{display:"flex",gap:12,padding:"12px 20px",borderBottom:i<guide.doesNot.length-1?"1px solid var(--frost)":"none",alignItems:"flex-start"}}>
+                <span style={{color:"var(--rose)",fontWeight:800,flexShrink:0,marginTop:1}}>✕</span>
+                <span style={{fontSize:13,color:"var(--ink2)",lineHeight:1.6}}>{r}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {guide.extra && (
+        <div className="card" style={{marginBottom:16}}>
+          <div className="card-header"><div className="card-title" style={{color:guide.color}}>🤝 {guide.extra.title}</div></div>
+          <div className="card-body" style={{padding:0}}>
+            {guide.extra.points.map((r,i) => (
+              <div key={i} style={{display:"flex",gap:12,padding:"12px 20px",borderBottom:i<guide.extra.points.length-1?"1px solid var(--frost)":"none",alignItems:"flex-start"}}>
+                <span style={{color:guide.color,fontWeight:800,flexShrink:0,marginTop:1}}>→</span>
+                <span style={{fontSize:13,color:"var(--ink2)",lineHeight:1.6}}>{r}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {guide.escalation && (
+        <div className="card">
+          <div className="card-header"><div className="card-title" style={{color:"var(--amber)"}}>🔺 Escalation Path</div></div>
+          <div className="card-body" style={{padding:0}}>
+            {guide.escalation.map((step,i) => (
+              <div key={i} style={{display:"flex",gap:12,padding:"12px 20px",borderBottom:i<guide.escalation.length-1?"1px solid var(--frost)":"none",alignItems:"flex-start"}}>
+                <div style={{minWidth:180,fontSize:12,fontWeight:700,color:"var(--amber)",flexShrink:0}}>{step.from}</div>
+                <div style={{fontSize:13,color:"var(--ink2)"}}>{step.to}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{display:"flex",gap:8,marginBottom:20,background:"var(--snow)",padding:5,borderRadius:12,border:"1px solid var(--frost)"}}>
+        <button className={`miccai-tab ${activeTab==="mine"?"active":""}`} onClick={()=>setActiveTab("mine")}>
+          {myGuide.icon} My Role ({myGuide.label})
+        </button>
+        <button className={`miccai-tab ${activeTab==="all"?"active":""}`} onClick={()=>setActiveTab("all")}>
+          👥 All Roles
+        </button>
+      </div>
+
+      {activeTab === "mine" && (
+        <div className="miccai-fadein">
+          <div style={{padding:"10px 16px",borderRadius:10,background:"rgba(91,59,245,.06)",border:"1px solid rgba(91,59,245,.2)",fontSize:13,color:"var(--violet)",fontWeight:600,marginBottom:20}}>
+            📌 Showing your role: <strong>{myGuide.label}</strong>
+          </div>
+          <GuideCard guide={myGuide} />
+        </div>
+      )}
+
+      {activeTab === "all" && (
+        <div className="miccai-fadein">
+          {allRoles.map(([key, guide]) => (
+            <div key={key} style={{marginBottom:32}}>
+              <GuideCard guide={guide} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  EXCUSE FORM  (any member)
 // ─────────────────────────────────────────────────────────────────────────────
 function ExcuseFormView({ user }) {
   const team = getTeam(user);
-  const [form, setForm] = useState({ targetDate: "", excuseType: "meeting", reason: "" });
+  const [form, setForm] = useState({ selectedId: "", excuseType: "meeting", reason: "" });
   const [myExcuses, setMyExcuses] = useState([]);
+  const [meetings, setMeetings] = useState([]);
+  const [tasks, setTasks] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState("");
 
   useEffect(() => {
     if (!team) return;
-    sheetsAPI.getByTeam("ExcuseRequests", team.id).then(data => {
-      setMyExcuses(data.filter(e => e.memberEmail?.toLowerCase() === user.email?.toLowerCase()));
+    Promise.all([
+      sheetsAPI.getByTeam("ExcuseRequests", team.id),
+      sheetsAPI.getByTeam("MeetingNotes", team.id),
+      sheetsAPI.getByTeam("TeamTasks", team.id),
+    ]).then(([excuses, mtgs, tks]) => {
+      setMyExcuses(excuses.filter(e => e.memberEmail?.toLowerCase() === user.email?.toLowerCase()));
+      setMeetings(mtgs.sort((a,b) => new Date(a.meetingDate) - new Date(b.meetingDate)));
+      setTasks(tks.filter(t => (t.assignedTo === user.email || t.assignedTo === "all") && t.status !== "graded"));
     });
   }, [team?.id]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3500); };
 
   const submit = async () => {
-    if (!form.targetDate || !form.reason.trim()) { showToast("Fill in the date and reason."); return; }
+    if (!form.selectedId || !form.reason.trim()) { showToast("Select a meeting/task and enter a reason."); return; }
     setSubmitting(true);
+    const options = form.excuseType === "meeting" ? meetings : tasks;
+    const selected = options.find(o => o.id === form.selectedId);
+    const label = form.excuseType === "meeting"
+      ? `${selected?.title || "Meeting"} (${selected?.meetingDate || ""})`
+      : `${selected?.taskTitle || selected?.title || "Task"} (due ${selected?.dueDate || "TBD"})`;
     const record = {
       id: `EX${Date.now()}`,
       teamId: team.id,
       memberEmail: user.email,
       memberName: user.name || user.Name || user.email,
-      targetDate: form.targetDate,
+      targetId: form.selectedId,
+      targetLabel: label,
       excuseType: form.excuseType,
       reason: form.reason,
       status: "pending",
@@ -2720,12 +2943,16 @@ function ExcuseFormView({ user }) {
     };
     await sheetsAPI.push("ExcuseRequests", record);
     setMyExcuses(p => [record, ...p]);
-    setForm({ targetDate: "", excuseType: "meeting", reason: "" });
+    setForm({ selectedId: "", excuseType: "meeting", reason: "" });
     setSubmitting(false);
     showToast("Excuse submitted ✓");
   };
 
   if (!team) return <div className="card"><div className="card-body">No team assigned.</div></div>;
+
+  const dropdownOptions = form.excuseType === "meeting"
+    ? meetings.map(m => ({ id: m.id, label: `📅 ${m.title} — ${m.meetingDate}` }))
+    : tasks.map(t => ({ id: t.id, label: `📋 ${t.taskTitle || t.title || "Task"} — due ${t.dueDate || "TBD"}` }));
 
   return (
     <div>
@@ -2737,15 +2964,22 @@ function ExcuseFormView({ user }) {
             <label className="flabel">Type</label>
             <div style={{ display: "flex", gap: 10 }}>
               {[{ v: "meeting", label: "📅 Meeting absence" }, { v: "task", label: "📋 Task deadline" }].map(opt => (
-                <div key={opt.v} onClick={() => setForm(f => ({ ...f, excuseType: opt.v }))}
+                <div key={opt.v} onClick={() => setForm(f => ({ ...f, excuseType: opt.v, selectedId: "" }))}
                   style={{ padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "1.5px solid", borderColor: form.excuseType === opt.v ? "var(--violet)" : "var(--frost)", background: form.excuseType === opt.v ? "rgba(91,59,245,.07)" : "white", color: form.excuseType === opt.v ? "var(--violet)" : "var(--ink3)" }}>
                   {opt.label}
                 </div>
               ))}
             </div>
           </div>
-          <div className="fg"><label className="flabel">Date (meeting date or task deadline)</label>
-            <input type="date" className="finput" value={form.targetDate} onChange={e => setForm(f => ({ ...f, targetDate: e.target.value }))} />
+          <div className="fg">
+            <label className="flabel">{form.excuseType === "meeting" ? "Select Meeting" : "Select Task"}</label>
+            <select className="finput fselect" value={form.selectedId} onChange={e => setForm(f => ({ ...f, selectedId: e.target.value }))}>
+              <option value="">— choose {form.excuseType === "meeting" ? "a meeting" : "a task"} —</option>
+              {dropdownOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+            {dropdownOptions.length === 0 && (
+              <div style={{fontSize:12,color:"var(--ink3)",marginTop:6}}>No {form.excuseType === "meeting" ? "meetings" : "tasks"} found for your team.</div>
+            )}
           </div>
           <div className="fg"><label className="flabel">Reason</label>
             <textarea className="finput ftextarea" style={{ minHeight: 90 }} placeholder="Explain why you won't be able to attend / submit…" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} />
@@ -2761,7 +2995,7 @@ function ExcuseFormView({ user }) {
             {myExcuses.map((e, i) => (
               <div key={e.id || i} style={{ padding: "14px 20px", borderBottom: "1px solid var(--frost)", display: "flex", alignItems: "flex-start", gap: 12 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{e.excuseType === "meeting" ? "Meeting absence" : "Task deadline"} — {e.targetDate}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{e.excuseType === "meeting" ? "Meeting absence" : "Task deadline"} — {e.targetLabel || e.targetDate || ""}</div>
                   <div className="txt-muted" style={{ fontSize: 12, marginTop: 2 }}>{e.reason}</div>
                 </div>
                 <span className={`badge ${e.status === "approved" ? "b-qual" : e.status === "rejected" ? "" : "b-review"}`} style={e.status === "rejected" ? { background: "var(--rose)18", color: "var(--rose)" } : {}}>
