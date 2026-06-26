@@ -528,12 +528,14 @@ function DataProvider({ children }) {
   const updateUser = (id, patch) => {
     const updated = users.map(u => u.id === id ? { ...u, ...patch } : u);
     save(updated);
-    const { track, challengeId, teamRole, phase, status, trackLabel, track1, track2, track3, ...safePatch } = patch;
+    const { track, challengeId, teamRole, phase, status, trackLabel, track1, track2, track3, password, ...safePatch } = patch;
     const userEmail = patch.email || users.find(u => u.id === id)?.email;
     if (userEmail) {
       sheetsAPI.updateByMatch("Users", "email", userEmail, safePatch);
+      // Password changes go through update action which also hashes
+      if (password) sheetsAPI.update("Users", id, { password });
     } else {
-      sheetsAPI.update("Users", id, safePatch);
+      sheetsAPI.update("Users", id, { ...safePatch, ...(password ? { password } : {}) });
     }
     showToast("✓ Profile updated");
   };

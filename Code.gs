@@ -170,6 +170,10 @@ function handleRequest(e) {
       const matchVal   = params.matchVal;
       const updateData = params.data;
 
+      if (updateData && updateData.password && updateData.password.length < 64) {
+        updateData.password = hashPassword(updateData.password);
+      }
+
       if (!matchCol) return jsonResponse({ status: 'error', message: 'matchCol is required' });
 
       const lastRow = ws.getLastRow();
