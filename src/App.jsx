@@ -528,14 +528,13 @@ function DataProvider({ children }) {
   const updateUser = (id, patch) => {
     const updated = users.map(u => u.id === id ? { ...u, ...patch } : u);
     save(updated);
-    const { track, challengeId, teamRole, phase, status, trackLabel, track1, track2, track3, password, ...safePatch } = patch;
+    const { track, challengeId, teamRole, phase, status, trackLabel, track1, track2, track3, ...safePatch } = patch;
     const userEmail = patch.email || users.find(u => u.id === id)?.email;
     if (userEmail) {
+      // updateByMatch in Code.gs now hashes password automatically
       sheetsAPI.updateByMatch("Users", "email", userEmail, safePatch);
-      // Password changes go through update action which also hashes
-      if (password) sheetsAPI.update("Users", id, { password });
     } else {
-      sheetsAPI.update("Users", id, { ...safePatch, ...(password ? { password } : {}) });
+      sheetsAPI.update("Users", id, safePatch);
     }
     showToast("✓ Profile updated");
   };
@@ -6170,11 +6169,23 @@ function ProfileView({ user }) {
   const { updateUser } = useContext(DataCtx);
   const [form, setForm] = useState({...user});
   const [saved, setSaved] = useState(false);
+  const [pwForm, setPwForm] = useState({ newPw: "", confirmPw: "" });
+  const [pwMsg, setPwMsg] = useState(null);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const save = () => {
-    updateUser(user.id, form);
+    const { password, ...profileFields } = form;
+    updateUser(user.id, profileFields);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  };
+  const savePassword = () => {
+    if (!pwForm.newPw) { setPwMsg({ error: true, text: "Enter a new password." }); return; }
+    if (pwForm.newPw.length < 6) { setPwMsg({ error: true, text: "Password must be at least 6 characters." }); return; }
+    if (pwForm.newPw !== pwForm.confirmPw) { setPwMsg({ error: true, text: "Passwords don't match." }); return; }
+    updateUser(user.id, { ...user, password: pwForm.newPw });
+    setPwForm({ newPw: "", confirmPw: "" });
+    setPwMsg({ error: false, text: "Password updated ✓" });
+    setTimeout(() => setPwMsg(null), 3000);
   };
 
   const isParticipant = user.role === ROLES.PARTICIPANT;
@@ -6213,9 +6224,18 @@ function ProfileView({ user }) {
               ? <div className="fg"><label className="flabel">Email</label><input className="finput" value={form.email||""} onChange={e=>set("email",e.target.value)}/></div>
               : <div className="fg"><label className="flabel">Email</label><input className="finput" value={form.email||""} disabled style={{opacity:0.6,cursor:"not-allowed"}}/></div>
             }
-            <div className="fg">
-              <label className="flabel">New Password <span style={{fontWeight:400,textTransform:"none",letterSpacing:0}}>(leave blank to keep current)</span></label>
-              <input className="finput" type="password" placeholder="New password…" onChange={e=>e.target.value&&set("password",e.target.value)}/>
+            <div style={{marginTop:8,padding:"14px 16px",borderRadius:12,border:"1px solid var(--frost)",background:"var(--snow)"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"var(--ink)",marginBottom:10}}>🔒 Change Password</div>
+              <div className="fg" style={{marginBottom:8}}>
+                <label className="flabel">New Password</label>
+                <input className="finput" type="password" placeholder="At least 6 characters…" value={pwForm.newPw} onChange={e=>setPwForm(f=>({...f,newPw:e.target.value}))}/>
+              </div>
+              <div className="fg" style={{marginBottom:10}}>
+                <label className="flabel">Confirm Password</label>
+                <input className="finput" type="password" placeholder="Repeat new password…" value={pwForm.confirmPw} onChange={e=>setPwForm(f=>({...f,confirmPw:e.target.value}))}/>
+              </div>
+              {pwMsg && <div style={{fontSize:12,marginBottom:8,color:pwMsg.error?"var(--rose)":"var(--jade)",fontWeight:600}}>{pwMsg.text}</div>}
+              <button className="btn btn-p btn-sm" onClick={savePassword}>Update Password</button>
             </div>
           </div>
         </div>
