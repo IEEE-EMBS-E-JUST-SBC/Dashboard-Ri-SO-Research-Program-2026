@@ -529,7 +529,12 @@ function DataProvider({ children }) {
     const updated = users.map(u => u.id === id ? { ...u, ...patch } : u);
     save(updated);
     const { track, challengeId, teamRole, phase, status, trackLabel, track1, track2, track3, ...safePatch } = patch;
-    sheetsAPI.update("Users", id, safePatch);
+    const userEmail = patch.email || users.find(u => u.id === id)?.email;
+    if (userEmail) {
+      sheetsAPI.updateByMatch("Users", "email", userEmail, safePatch);
+    } else {
+      sheetsAPI.update("Users", id, safePatch);
+    }
     showToast("✓ Profile updated");
   };
 
