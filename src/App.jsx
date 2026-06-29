@@ -870,7 +870,7 @@ const PBar = ({ val, max=100, color="" }) => (
 //  PARTICIPANT VIEWS
 // ─────────────────────────────────────────────
 function ParticipantDashboard({ user }) {
-  return <MICCAIChallenges user={user} />;
+  return <MICCAIChallenges user={activeUser} />;
 }
 
 function _OldParticipantDashboard_UNUSED({ user }) {
@@ -1885,17 +1885,17 @@ function MemberTaskView({ user, challenge, tasks, onTasksChange, pushToSheets })
                   </div>
                 )}
 
-                {/* Submitted state */}
-                {effStatus === "submitted" && editingSubmission !== task.id && (
-                  <div style={{padding:"10px 14px",borderRadius:9,background:"#f5f3ff",border:"1px solid #5B3BF530",fontSize:13,color:"var(--ink2)"}}>
-                    ⏳ Submitted — pending review.
+                {/* Submitted / Graded state */}
+                {(effStatus === "submitted" || effStatus === "graded") && editingSubmission !== task.id && (
+                  <div style={{padding:"10px 14px",borderRadius:9,background: effStatus === "graded" ? "#f0fdf8" : "#f5f3ff",border:`1px solid ${effStatus === "graded" ? "#0F9F6E30" : "#5B3BF530"}`,fontSize:13,color:"var(--ink2)"}}>
+                    {effStatus === "submitted" ? "⏳ Submitted — pending review." : "✅ Graded"}
                     {effFileLink && <span> <a href={effFileLink} target="_blank" rel="noreferrer" style={{color:"var(--azure)",fontWeight:600}}>View your file →</a></span>}
                     <button onClick={() => { setEditingSubmission(task.id); setFileLinks(p => ({...p,[task.id]:effFileLink||""})); setSuppLinks(p => ({...p,[task.id]:effSuppLinks||""})); }} style={{marginLeft:10,fontSize:11,padding:"3px 10px",borderRadius:7,border:"1px solid var(--violet)",background:"transparent",color:"var(--violet)",cursor:"pointer",fontWeight:600}}>Edit Submission</button>
                   </div>
                 )}
 
                 {/* Edit submission form */}
-                {effStatus === "submitted" && editingSubmission === task.id && (
+                {(effStatus === "submitted" || effStatus === "graded") && editingSubmission === task.id && (
                   <div style={{marginTop:8,padding:14,borderRadius:10,background:"var(--snow)",border:"1px solid var(--frost)"}}>
                     <div style={{fontSize:12,fontWeight:700,color:"var(--ink)",marginBottom:8}}>✏️ Edit Submission</div>
                     <div style={{marginBottom:8}}>
@@ -2150,7 +2150,7 @@ function MICCAIChallenges({ user }) {
           {loadingTasks ? (
             <div style={{textAlign:"center",padding:"40px",color:"var(--ink3)",fontSize:13}}>Loading your tasks…</div>
           ) : (
-            <MemberTaskView user={user} challenge={challenge} tasks={sprintTasks} onTasksChange={setSprintTasks} pushToSheets={pushTaskToSheets} />
+            <MemberTaskView user={activeUser} challenge={challenge} tasks={sprintTasks} onTasksChange={setSprintTasks} pushToSheets={pushTaskToSheets} />
           )}
         </div>
       )}
@@ -2158,14 +2158,14 @@ function MICCAIChallenges({ user }) {
       {/* ── TAB: WEEKLY FEEDBACK (Members only) ── */}
       {mainTab === "feedback" && (
         <div className="miccai-fadein">
-          <WeeklyFeedbackView user={user} />
+          <WeeklyFeedbackView user={activeUser} />
         </div>
       )}
 
       {/* ── TAB: GUIDELINES (all roles) ── */}
       {mainTab === "guidelines" && (
         <div className="miccai-fadein">
-          <RoleGuidelinesView user={user} />
+          <RoleGuidelinesView user={activeUser} />
         </div>
       )}
 
@@ -3863,7 +3863,7 @@ function ARTaskManager({ user }) {
 function RequestMeetingVote({ user }) {
   // This just creates a new meeting note with votingOpen=true.
   // Reuses MeetingNotesView with canManage=true.
-  return <MeetingNotesView user={user} />;
+  return <MeetingNotesView user={activeUser} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3964,10 +3964,10 @@ function TeamAdminDashboard({ user }) {
           <button key={t.id} className={`tab ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>{t.label}</button>
         ))}
       </div>
-      {tab === "tasks"    && <ARTaskManager user={user} />}
-      {tab === "meetings" && <MeetingNotesView user={user} />}
-      {tab === "excuses"  && <ExcuseReviewView user={user} />}
-      {tab === "grades"   && <TeamGradeOverview user={user} />}
+      {tab === "tasks"    && <ARTaskManager user={activeUser} />}
+      {tab === "meetings" && <MeetingNotesView user={activeUser} />}
+      {tab === "excuses"  && <ExcuseReviewView user={activeUser} />}
+      {tab === "grades"   && <TeamGradeOverview user={activeUser} />}
     </div>
   );
 }
@@ -6206,7 +6206,7 @@ function ProfileView({ user }) {
           <div className="card-body">
             {/* Avatar row */}
             <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:24,padding:16,background:"var(--snow)",borderRadius:12,border:"1px solid var(--frost)"}}>
-              <Avatar user={user}/>
+              <Avatar user={activeUser}/>
               <div>
                 <div style={{fontWeight:700,fontSize:16}}>{user.name||user.Name||"—"}</div>
                 <div className="txt-muted">{user.email}</div>
@@ -6342,6 +6342,20 @@ function AppShell() {
   const [nav, setNav] = useState("dashboard");
   const [subTab, setSubTab] = useState(0);
 
+  // ── MULTI-TEAM SUPPORT ────────────────────────────────────────────────────
+  // Parse comma-separated `teams` field (e.g. "A,D,G"), fall back to teamId/team
+  const allTeamIds = (() => {
+    const raw = (user?.teams || "").toString().trim();
+    if (raw) return raw.split(",").map(t => t.trim()).filter(Boolean);
+    const single = (user?.teamId || user?.team || "").toString().trim();
+    return single ? [single] : [];
+  })();
+  const [activeTeamId, setActiveTeamId] = useState(allTeamIds[0] || "");
+  const isMultiTeam = allTeamIds.length > 1;
+  // Inject active team into user object so all child components pick it up via getTeam()
+  const activeUser = { ...user, teamId: activeTeamId, team: activeTeamId };
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Safe accessors — handles both "name" and "Name" from Sheets, and missing fields
   const userName = user?.name || user?.Name || user?.email || "User";
   const userRole = (user?.role || user?.Role || "").toLowerCase().trim();
@@ -6370,16 +6384,16 @@ function AppShell() {
         { id:"profile",      icon:"👤", label:"My Profile" },
       ],
       pages: {
-        dashboard:    <ParticipantDashboard user={user}/>,
-        submit_task:  <TaskSubmissionView user={user}/>,
-        my_grade:     <MyGradeView user={user}/>,
-        meetings:     <MeetingNotesView user={user}/>,
-        excuse:       <ExcuseFormView user={user}/>,
-        // progress:     <ParticipantProgress user={user}/>,
-        // training:     <TrainingModules user={user}/>,
-        // research:     <ResearchHub user={user}/>,
-        // resources:    <ResourceRequests user={user}/>,
-        // calendar:     <EnrichmentCalendar user={user}/>,
+        dashboard:    <ParticipantDashboard user={activeUser}/>,
+        submit_task:  <TaskSubmissionView user={activeUser}/>,
+        my_grade:     <MyGradeView user={activeUser}/>,
+        meetings:     <MeetingNotesView user={activeUser}/>,
+        excuse:       <ExcuseFormView user={activeUser}/>,
+        // progress:     <ParticipantProgress user={activeUser}/>,
+        // training:     <TrainingModules user={activeUser}/>,
+        // research:     <ResearchHub user={activeUser}/>,
+        // resources:    <ResourceRequests user={activeUser}/>,
+        // calendar:     <EnrichmentCalendar user={activeUser}/>,
       },
       defaultPage: "dashboard",
     },
@@ -6394,12 +6408,12 @@ function AppShell() {
         { id:"profile",     icon:"👤", label:"My Profile" },
       ],
       pages: {
-        dashboard:  <MentorDashboard user={user}/>,
-        mentees:    <MentorMentees user={user}/>,
-        meetings:   <MentorMeetings user={user}/>,
-        review:     <PaperReview user={user}/>,
-        progress:   <MenteeProgress user={user}/>,
-        challenges: <MICCAIChallenges user={user}/>,
+        dashboard:  <MentorDashboard user={activeUser}/>,
+        mentees:    <MentorMentees user={activeUser}/>,
+        meetings:   <MentorMeetings user={activeUser}/>,
+        review:     <PaperReview user={activeUser}/>,
+        progress:   <MenteeProgress user={activeUser}/>,
+        challenges: <MICCAIChallenges user={activeUser}/>,
       },
       defaultPage: "dashboard",
     },
@@ -6419,17 +6433,17 @@ function AppShell() {
         { id:"profile",        icon:"👤", label:"My Profile" },
       ],
       pages: {
-        dashboard:      <AdminDashboard user={user}/>,
+        dashboard:      <AdminDashboard user={activeUser}/>,
         users:          <AdminUsers/>,
         filtration:     <AdminFiltration/>,
         assignment:     <AdminTrackAssignment/>,
         resources_mgmt: <AdminResourceMgmt/>,
         metrics:        <AdminMetrics/>,
         sheets:         <AdminSheetsConfig/>,
-        team_grades:    <TeamGradeOverview user={user}/>,
-        team_tasks:     <ARTaskManager user={user}/>,
-        team_meetings:  <MeetingNotesView user={user}/>,
-        team_excuses:   <ExcuseReviewView user={user}/>,
+        team_grades:    <TeamGradeOverview user={activeUser}/>,
+        team_tasks:     <ARTaskManager user={activeUser}/>,
+        team_meetings:  <MeetingNotesView user={activeUser}/>,
+        team_excuses:   <ExcuseReviewView user={activeUser}/>,
       },
       defaultPage: "dashboard",
     },
@@ -6459,12 +6473,12 @@ function AppShell() {
         { id:"profile",    icon:"👤", label:"My Profile" },
       ],
       pages: {
-        dashboard:  <TeamGradeOverview user={user}/>,
-        tasks:      <ARTaskManager user={user}/>,
-        meetings:   <MeetingNotesView user={user}/>,
-        excuses:    <ExcuseReviewView user={user}/>,
-        grades:     <TeamGradeOverview user={user}/>,
-        challenges: <MICCAIChallenges user={user}/>,
+        dashboard:  <TeamGradeOverview user={activeUser}/>,
+        tasks:      <ARTaskManager user={activeUser}/>,
+        meetings:   <MeetingNotesView user={activeUser}/>,
+        excuses:    <ExcuseReviewView user={activeUser}/>,
+        grades:     <TeamGradeOverview user={activeUser}/>,
+        challenges: <MICCAIChallenges user={activeUser}/>,
       },
       defaultPage: "dashboard",
     },
@@ -6485,14 +6499,14 @@ function AppShell() {
         { id:"profile",    icon:"👤", label:"My Profile" },
       ],
       pages: {
-        dashboard:  <TeamAdminDashboard user={user}/>,
-        tasks:      <ARTaskManager user={user}/>,
-        submit:     <TaskSubmissionView user={user}/>,
-        grade:      <MyGradeView user={user}/>,
-        meetings:   <MeetingNotesView user={user}/>,
-        excuses_r:  <ExcuseReviewView user={user}/>,
-        all_grades: <TeamGradeOverview user={user}/>,
-        challenges: <MICCAIChallenges user={user}/>,
+        dashboard:  <TeamAdminDashboard user={activeUser}/>,
+        tasks:      <ARTaskManager user={activeUser}/>,
+        submit:     <TaskSubmissionView user={activeUser}/>,
+        grade:      <MyGradeView user={activeUser}/>,
+        meetings:   <MeetingNotesView user={activeUser}/>,
+        excuses_r:  <ExcuseReviewView user={activeUser}/>,
+        all_grades: <TeamGradeOverview user={activeUser}/>,
+        challenges: <MICCAIChallenges user={activeUser}/>,
       },
       defaultPage: "dashboard",
     },
@@ -6515,7 +6529,7 @@ function AppShell() {
 
   const renderContent = () => {
     // Profile is always available to every role
-    if (nav === "profile") return <ProfileView user={user}/>;
+    if (nav === "profile") return <ProfileView user={activeUser}/>;
 
     // Unknown / misconfigured role — show a clear diagnostic, never guess
     if (!roleConfig) {
@@ -6568,7 +6582,23 @@ function AppShell() {
 
       <main className="main">
         <header className="topbar">
-          <div style={{fontSize:16,fontWeight:700}}>{titles[nav]||"Dashboard"}</div>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{fontSize:16,fontWeight:700}}>{titles[nav]||"Dashboard"}</div>
+            {isMultiTeam && (
+              <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px 4px 10px",borderRadius:20,background:"rgba(91,59,245,.08)",border:"1px solid rgba(91,59,245,.2)"}}>
+                <span style={{fontSize:11,fontWeight:700,color:"var(--violet)"}}>Team:</span>
+                <select
+                  value={activeTeamId}
+                  onChange={e => setActiveTeamId(e.target.value)}
+                  style={{fontSize:12,fontWeight:700,color:"var(--violet)",border:"none",background:"transparent",cursor:"pointer",outline:"none",padding:"0 4px"}}>
+                  {allTeamIds.map(id => {
+                    const t = TEAMS.find(t => t.id === id);
+                    return <option key={id} value={id}>{id} — {t ? t.challenge.split("—")[0].trim() : id}</option>;
+                  })}
+                </select>
+              </div>
+            )}
+          </div>
           <div className="topbar-right">
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <div className="sync-dot" style={{background:syncStatus==="syncing"?"var(--amber)":"var(--jade)"}}/>
