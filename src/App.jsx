@@ -2150,7 +2150,7 @@ function MICCAIChallenges({ user }) {
           {loadingTasks ? (
             <div style={{textAlign:"center",padding:"40px",color:"var(--ink3)",fontSize:13}}>Loading your tasks…</div>
           ) : (
-            <MemberTaskView user={activeUser} challenge={challenge} tasks={sprintTasks} onTasksChange={setSprintTasks} pushToSheets={pushTaskToSheets} />
+            <MemberTaskView user={user} challenge={challenge} tasks={sprintTasks} onTasksChange={setSprintTasks} pushToSheets={pushTaskToSheets} />
           )}
         </div>
       )}
@@ -2158,14 +2158,14 @@ function MICCAIChallenges({ user }) {
       {/* ── TAB: WEEKLY FEEDBACK (Members only) ── */}
       {mainTab === "feedback" && (
         <div className="miccai-fadein">
-          <WeeklyFeedbackView user={activeUser} />
+          <WeeklyFeedbackView user={user} />
         </div>
       )}
 
       {/* ── TAB: GUIDELINES (all roles) ── */}
       {mainTab === "guidelines" && (
         <div className="miccai-fadein">
-          <RoleGuidelinesView user={activeUser} />
+          <RoleGuidelinesView user={user} />
         </div>
       )}
 
@@ -3962,10 +3962,10 @@ function TeamAdminDashboard({ user }) {
           <button key={t.id} className={`tab ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>{t.label}</button>
         ))}
       </div>
-      {tab === "tasks"    && <ARTaskManager user={activeUser} />}
-      {tab === "meetings" && <MeetingNotesView user={activeUser} />}
-      {tab === "excuses"  && <ExcuseReviewView user={activeUser} />}
-      {tab === "grades"   && <TeamGradeOverview user={activeUser} />}
+      {tab === "tasks"    && <ARTaskManager user={user} />}
+      {tab === "meetings" && <MeetingNotesView user={user} />}
+      {tab === "excuses"  && <ExcuseReviewView user={user} />}
+      {tab === "grades"   && <TeamGradeOverview user={user} />}
     </div>
   );
 }
