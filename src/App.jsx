@@ -6206,7 +6206,7 @@ function ProfileView({ user }) {
           <div className="card-body">
             {/* Avatar row */}
             <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:24,padding:16,background:"var(--snow)",borderRadius:12,border:"1px solid var(--frost)"}}>
-              <Avatar user={activeUser}/>
+              <Avatar user={user}/>
               <div>
                 <div style={{fontWeight:700,fontSize:16}}>{user.name||user.Name||"—"}</div>
                 <div className="txt-muted">{user.email}</div>
