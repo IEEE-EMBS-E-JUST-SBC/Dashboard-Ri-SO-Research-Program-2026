@@ -870,7 +870,7 @@ const PBar = ({ val, max=100, color="" }) => (
 //  PARTICIPANT VIEWS
 // ─────────────────────────────────────────────
 function ParticipantDashboard({ user }) {
-  return <MICCAIChallenges user={activeUser} />;
+  return <MICCAIChallenges user={user} />;
 }
 
 function _OldParticipantDashboard_UNUSED({ user }) {
@@ -3861,9 +3861,7 @@ function ARTaskManager({ user }) {
 //  REQUEST MEETING VOTE  (AR + Admin — request members vote for a slot)
 // ─────────────────────────────────────────────────────────────────────────────
 function RequestMeetingVote({ user }) {
-  // This just creates a new meeting note with votingOpen=true.
-  // Reuses MeetingNotesView with canManage=true.
-  return <MeetingNotesView user={activeUser} />;
+  return <MeetingNotesView user={user} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
