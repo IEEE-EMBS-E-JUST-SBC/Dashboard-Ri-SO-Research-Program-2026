@@ -4115,80 +4115,103 @@ function TeamGradeOverview({ user }) {
 // ─────────────────────────────────────────────
 //  MENTOR VIEWS
 // ─────────────────────────────────────────────
+function useMentorTeamMembers(user) {
+  const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const team = getTeam(user);
+  useEffect(() => {
+    if (!team) { setLoading(false); return; }
+    sheetsAPI.get("Users").then(rows => {
+      const teamMembers = rows.filter(r =>
+        String(r.teamId || r.team || "").trim().toUpperCase() === team.id.toUpperCase() &&
+        String(r.teamRole || "").toLowerCase() !== "mentor"
+      );
+      setMembers(teamMembers);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [team?.id]);
+  return { members, loading, team };
+}
+
 function MentorDashboard({ user }) {
-  const { participants } = useContext(DataCtx);
-  const myMentees = participants.filter(p=>user.mentees?.includes(p.id));
+  const { members, loading, team } = useMentorTeamMembers(user);
+  const name = (user.name || user.Name || user.email || "").split(" ").slice(0,2).join(" ");
   return (
     <div>
       <div className="banner">
         <div>
           <div className="banner-chip">Mentor · IEEE E-JUST EMBS SBC</div>
-          <div className="banner-title">Welcome, {(user.name||user.Name||user.email||"").split(" ").slice(0,2).join(" ")}</div>
-          <div className="banner-sub">Track {user.track}: {user.specialty} · {user.mentees?.length||0} Mentees</div>
+          <div className="banner-title">Welcome, {name}</div>
+          <div className="banner-sub">{team ? team.challenge : "No team assigned"} · {members.length} Team Members</div>
         </div>
         <div className="bstats">
-          {[[(user.mentees?.length||0),"Mentees"],[user.meetings,"Meetings"],[user.papersReviewed,"Papers"]].map(([v,l])=>(
-            <div key={l}><div className="bstat-val">{v}</div><div className="bstat-label">{l}</div></div>
+          {[[members.length,"Members"],[team?.meeting||"—","Meeting Time"]].map(([v,l])=>(
+            <div key={l}><div className="bstat-val" style={{fontSize:typeof v==="string"&&v.length>6?12:undefined}}>{v}</div><div className="bstat-label">{l}</div></div>
           ))}
         </div>
       </div>
       <div className="g4 mb6">
-        <div className="stat"><div className="stat-icon">👥</div><div className="stat-val">{myMentees.length}</div><div className="stat-label">Active Mentees</div></div>
-        <div className="stat blue"><div className="stat-icon">📊</div><div className="stat-val">{myMentees.length?`${Math.round(myMentees.reduce((a,b)=>a+((b.phase-1)/5*100),0)/myMentees.length)}%`:"—"}</div><div className="stat-label">Avg Progress</div></div>
-        <div className="stat green"><div className="stat-icon">📝</div><div className="stat-val">{user.papersReviewed}</div><div className="stat-label">Drafts Reviewed</div></div>
-        <div className="stat amber"><div className="stat-icon">📅</div><div className="stat-val">2</div><div className="stat-label">Meetings This Week</div></div>
+        <div className="stat"><div className="stat-icon">👥</div><div className="stat-val">{members.length}</div><div className="stat-label">Team Members</div></div>
+        <div className="stat blue"><div className="stat-icon">🏥</div><div className="stat-val">{team?.id||"—"}</div><div className="stat-label">Team</div></div>
+        <div className="stat green"><div className="stat-icon">📅</div><div className="stat-val">{team?.track||"—"}</div><div className="stat-label">Track</div></div>
+        <div className="stat amber"><div className="stat-icon">🔬</div><div className="stat-val" style={{fontSize:11}}>{team?.challenge?.split(" ").slice(0,3).join(" ")||"—"}</div><div className="stat-label">Challenge</div></div>
       </div>
-      <div className="card">
-        <div className="card-header"><div className="card-title">My Mentees</div></div>
-        <div className="card-body" style={{padding:0}}>
-          <table className="tbl">
-            <thead><tr><th>Name</th><th>Phase</th><th>Track</th><th>Progress</th><th>Novelty</th><th>Competition</th></tr></thead>
-            <tbody>{myMentees.map(p=>(
-              <tr key={p.id}>
-                <td style={{fontWeight:600}}>{p.name}</td>
-                <td><PhaseBadge phase={p.phase}/></td>
-                <td><TrackBadge track={p.track} label={p.trackLabel}/></td>
-                <td style={{minWidth:130}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{flex:1}}><PBar val={(p.phase-1)} max={5}/></div>
-                    <span className="mono" style={{fontSize:11}}>{Math.round(((p.phase-1)/5)*100)}%</span>
-                  </div>
-                </td>
-                <td>{p.noveltyVerified?<span className="badge b-qual">✓</span>:<span className="badge b-review">Pending</span>}</td>
-                <td style={{fontSize:12}}>{p.competitionEnrolled||"—"}</td>
-              </tr>
-            ))}</tbody>
-          </table>
+      {loading ? <div className="txt-muted" style={{padding:20}}>Loading team members…</div> : (
+        <div className="card">
+          <div className="card-header"><div className="card-title">Team Members</div></div>
+          <div className="card-body" style={{padding:0}}>
+            <table className="tbl">
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
+              <tbody>{members.length === 0 ? (
+                <tr><td colSpan={4} style={{textAlign:"center",color:"var(--ink3)",padding:20}}>No team members found for Team {team?.id}</td></tr>
+              ) : members.map((m,i)=>(
+                <tr key={m.id||m.email||i}>
+                  <td style={{fontWeight:600}}>{m.name||m.Name||m.email}</td>
+                  <td className="txt-muted" style={{fontSize:12}}>{m.email}</td>
+                  <td><span className="badge b-review">{m.teamRole||"Member"}</span></td>
+                  <td><span className={`badge ${m.status==="active"?"b-qual":"b-phase"}`}>{m.status||"active"}</span></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
 function MentorMentees({ user }) {
-  const { participants } = useContext(DataCtx);
-  const myMentees = participants.filter(p=>user.mentees?.includes(p.id));
+  const { members, loading, team } = useMentorTeamMembers(user);
+  if (loading) return <div className="txt-muted" style={{padding:20}}>Loading…</div>;
+  if (!team) return <div className="card"><div className="card-body">No team assigned to your account.</div></div>;
   return (
-    <div className="g2">
-      {myMentees.map(p=>(
-        <div key={p.id} className="card">
-          <div className="card-body">
-            <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:16}}>
-              <div className="sava" style={{width:48,height:48,fontSize:20}}>{p.avatar}</div>
-              <div>
-                <div style={{fontSize:15,fontWeight:700}}>{p.name}</div>
-                <div className="txt-muted">{p.email}</div>
-                <div style={{marginTop:4}}><TrackBadge track={p.track} label={p.trackLabel}/></div>
+    <div>
+      <div style={{marginBottom:16,fontSize:14,color:"var(--ink3)"}}>
+        Team {team.id} — {team.challenge}
+      </div>
+      <div className="g2">
+        {members.length === 0 ? (
+          <div className="card"><div className="card-body">No team members found for Team {team.id}.</div></div>
+        ) : members.map((m,i)=>(
+          <div key={m.id||m.email||i} className="card">
+            <div className="card-body">
+              <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:16}}>
+                <div className="sava" style={{width:48,height:48,fontSize:20}}>{(m.name||m.email||"?")[0]}</div>
+                <div>
+                  <div style={{fontSize:15,fontWeight:700}}>{m.name||m.Name||m.email}</div>
+                  <div className="txt-muted">{m.email}</div>
+                  <div style={{marginTop:4}}><span className="badge b-review">{m.teamRole||"Member"}</span></div>
+                </div>
               </div>
+              {[["Team",`Team ${team.id}`],["Challenge",team.challenge],["Status",m.status||"active"],["GitHub",m.github||"—"],["LinkedIn",m.linkedin||"—"]].map(([k,v])=>(
+                <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"6px 0",borderBottom:"1px solid var(--frost)"}}>
+                  <span className="txt-muted">{k}</span><span style={{fontWeight:600,maxWidth:200,textAlign:"right",wordBreak:"break-all"}}>{v}</span>
+                </div>
+              ))}
             </div>
-            {[["Phase",`P${p.phase}: ${PHASES[p.phase-1]?.name}`],["Status",p.status],["Nationality",p.nationality],["GPA",p.gpa?.toFixed(1)],["Portfolio",`${p.portfolioScore}/100`],["Interview",`${p.interviewScore}/100`]].map(([k,v])=>(
-              <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"6px 0",borderBottom:"1px solid var(--frost)"}}>
-                <span className="txt-muted">{k}</span><span style={{fontWeight:600}}>{v}</span>
-              </div>
-            ))}
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -6397,20 +6420,20 @@ function AppShell() {
     },
     [ROLES.MENTOR]: {
       nav: [
-        { id:"dashboard", icon:"🏠", label:"Dashboard" },
-        { id:"mentees",   icon:"👥", label:"My Mentees" },
-        { id:"meetings",  icon:"📅", label:"Meeting Scheduler" },
-        { id:"review",    icon:"📝", label:"Paper Review", badge:"2" },
-        { id:"progress",    icon:"📊", label:"Progress Tracking" },
-        { id:"challenges",  icon:"🏥", label:"MICCAI Challenges" },
-        { id:"profile",     icon:"👤", label:"My Profile" },
+        { id:"dashboard",  icon:"🏠", label:"Dashboard" },
+        { id:"mentees",    icon:"👥", label:"Team Members" },
+        { id:"tasks",      icon:"📋", label:"Team Tasks" },
+        { id:"excuses",    icon:"📝", label:"Excuses" },
+        { id:"meetings",   icon:"📅", label:"Meetings" },
+        { id:"challenges", icon:"🏥", label:"MICCAI Challenges" },
+        { id:"profile",    icon:"👤", label:"My Profile" },
       ],
       pages: {
         dashboard:  <MentorDashboard user={activeUser}/>,
         mentees:    <MentorMentees user={activeUser}/>,
-        meetings:   <MentorMeetings user={activeUser}/>,
-        review:     <PaperReview user={activeUser}/>,
-        progress:   <MenteeProgress user={activeUser}/>,
+        tasks:      <ARTaskManager user={activeUser}/>,
+        excuses:    <ExcuseReviewView user={activeUser}/>,
+        meetings:   <MeetingNotesView user={activeUser}/>,
         challenges: <MICCAIChallenges user={activeUser}/>,
       },
       defaultPage: "dashboard",
