@@ -6198,6 +6198,8 @@ function ProfileView({ user }) {
   const [saved, setSaved] = useState(false);
   const [pwForm, setPwForm] = useState({ newPw: "", confirmPw: "" });
   const [pwMsg, setPwMsg] = useState(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoMsg, setPhotoMsg] = useState(null);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const save = () => {
     const { password, ...profileFields } = form;
@@ -6233,8 +6235,6 @@ function ProfileView({ user }) {
           <div className="card-body">
             {/* Avatar / Photo row */}
             {(() => {
-              const [photoUploading, setPhotoUploading] = React.useState(false);
-              const [photoMsg, setPhotoMsg] = React.useState(null);
               const uploadToDrive = async (file) => {
                 setPhotoUploading(true);
                 setPhotoMsg(null);
