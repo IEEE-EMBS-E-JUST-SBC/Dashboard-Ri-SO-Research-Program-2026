@@ -6232,45 +6232,85 @@ function ProfileView({ user }) {
           </div>
           <div className="card-body">
             {/* Avatar / Photo row */}
-            <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:24,padding:16,background:"var(--snow)",borderRadius:12,border:"1px solid var(--frost)"}}>
-              <div style={{position:"relative",flexShrink:0}}>
-                <Avatar user={{...user, photoUrl: form.photoUrl || user.photoUrl}} size={64}/>
-                <label title="Upload photo" style={{position:"absolute",bottom:0,right:0,width:22,height:22,borderRadius:"50%",background:"var(--violet)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:12,color:"white",boxShadow:"0 1px 4px rgba(0,0,0,.3)"}}>
-                  📷
-                  <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    const reader = new FileReader();
+            {(() => {
+              const [photoUploading, setPhotoUploading] = React.useState(false);
+              const [photoMsg, setPhotoMsg] = React.useState(null);
+              const uploadToDrive = async (file) => {
+                setPhotoUploading(true);
+                setPhotoMsg(null);
+                try {
+                  const reader = new FileReader();
+                  const dataUrl = await new Promise((res, rej) => {
                     reader.onload = ev => {
                       const img = new window.Image();
                       img.onload = () => {
-                        const SIZE = 120;
+                        const SIZE = 400;
                         const canvas = document.createElement("canvas");
                         canvas.width = SIZE; canvas.height = SIZE;
                         const ctx = canvas.getContext("2d");
                         const side = Math.min(img.width, img.height);
-                        const sx = (img.width - side) / 2;
-                        const sy = (img.height - side) / 2;
-                        ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
-                        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-                        set("photoUrl", dataUrl);
+                        ctx.drawImage(img, (img.width-side)/2, (img.height-side)/2, side, side, 0, 0, SIZE, SIZE);
+                        res(canvas.toDataURL("image/jpeg", 0.88));
                       };
+                      img.onerror = rej;
                       img.src = ev.target.result;
                     };
+                    reader.onerror = rej;
                     reader.readAsDataURL(file);
-                  }}/>
-                </label>
-              </div>
-              <div>
-                <div style={{fontWeight:700,fontSize:16}}>{user.name||user.Name||"—"}</div>
-                <div className="txt-muted">{user.email}</div>
-                <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
-                  <span className={`pill-role pill-${user.role}`} style={{display:"inline-block"}}>{user.role}</span>
-                  {team && <span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:"var(--frost)",color:"var(--ink2)"}}>Team {team.id} · {team.track}</span>}
+                  });
+                  const resp = await fetch(SHEETS_URL, { method:"POST", headers:{"Content-Type":"application/json"},
+                    body: JSON.stringify({ action:"uploadPhoto", imageBase64: dataUrl, email: user.email }) });
+                  const json = await resp.json();
+                  if (json.status === "ok") {
+                    set("photoUrl", json.imgUrl);
+                    setPhotoMsg({ ok: true, text: "✓ Photo uploaded to Google Drive!", driveUrl: json.viewUrl });
+                  } else {
+                    setPhotoMsg({ ok: false, text: "Upload failed: " + json.message });
+                  }
+                } catch(err) {
+                  setPhotoMsg({ ok: false, text: "Upload error: " + err.message });
+                } finally {
+                  setPhotoUploading(false);
+                }
+              };
+              const currentPhoto = form.photoUrl || user.photoUrl;
+              return (
+                <div style={{marginBottom:24}}>
+                  <div style={{display:"flex",gap:20,alignItems:"flex-start",padding:20,background:"var(--snow)",borderRadius:14,border:"1px solid var(--frost)"}}>
+                    {/* Big avatar */}
+                    <div style={{flexShrink:0,position:"relative"}}>
+                      {currentPhoto
+                        ? <img src={currentPhoto} alt="Profile" style={{width:80,height:80,borderRadius:"50%",objectFit:"cover",border:"3px solid var(--violet)",boxShadow:"0 2px 12px rgba(91,59,245,.2)"}}/>
+                        : <div style={{width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,var(--violet),var(--azure))",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,color:"white",fontWeight:700,border:"3px solid var(--violet)"}}>{(user.name||user.email||"?")[0].toUpperCase()}</div>
+                      }
+                    </div>
+                    {/* Info + upload */}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:16,marginBottom:2}}>{user.name||user.Name||"—"}</div>
+                      <div className="txt-muted" style={{fontSize:13,marginBottom:8}}>{user.email}</div>
+                      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+                        <span className={`pill-role pill-${user.role}`} style={{display:"inline-block"}}>{user.role}</span>
+                        {team && <span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:"var(--frost)",color:"var(--ink2)"}}>Team {team.id} · {team.track}</span>}
+                      </div>
+                      {/* Upload button */}
+                      <label style={{display:"inline-flex",alignItems:"center",gap:8,padding:"9px 18px",borderRadius:10,background:"var(--violet)",color:"white",fontWeight:700,fontSize:13,cursor: photoUploading?"not-allowed":"pointer",opacity:photoUploading?0.7:1,boxShadow:"0 2px 8px rgba(91,59,245,.3)",transition:"opacity .15s"}}>
+                        {photoUploading ? "⏳ Uploading…" : "📸 Upload Profile Photo"}
+                        <input type="file" accept="image/*" style={{display:"none"}} disabled={photoUploading}
+                          onChange={e=>{ const f=e.target.files[0]; if(f) uploadToDrive(f); e.target.value=""; }}/>
+                      </label>
+                      <div style={{fontSize:11,color:"var(--ink3)",marginTop:6}}>JPG/PNG · Saved to Google Drive · Used in program media</div>
+                      {photoMsg && (
+                        <div style={{marginTop:8,fontSize:12,fontWeight:600,color:photoMsg.ok?"var(--jade)":"var(--rose)"}}>
+                          {photoMsg.text}
+                          {photoMsg.ok && photoMsg.driveUrl && <a href={photoMsg.driveUrl} target="_blank" rel="noreferrer" style={{marginLeft:8,color:"var(--azure)"}}>View on Drive ↗</a>}
+                        </div>
+                      )}
+                      {currentPhoto && !photoMsg && <div style={{fontSize:11,color:"var(--jade)",marginTop:6}}>✓ Profile photo set</div>}
+                    </div>
+                  </div>
                 </div>
-                <div style={{fontSize:11,color:"var(--ink3)",marginTop:4}}>Click 📷 to upload a headshot photo</div>
-              </div>
-            </div>
+              );
+            })()}
 
             <div className="fg"><label className="flabel">Full Name</label>
               <input className="finput" value={form.name||""} onChange={e=>set("name",e.target.value)}/>
