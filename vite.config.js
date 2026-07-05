@@ -8,7 +8,7 @@ export default defineConfig({
       '/sheets-api': {
         target: 'https://script.google.com',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/sheets-api/, '/macros/s/AKfycbzMPGoDTaqWekIBsr_U_cFzyjaQvkOJnHKDa-E8iTvPK-DUitgJopOyk6F_uAXha0pr/exec'),
+        rewrite: (path) => path.replace(/^\/sheets-api/, '/macros/s/AKfycbzDc-Jp9Sni0DeCunhPFTBWvhcxsrrORfoA-dQGzKqDOeETe4DWYoNaOSecLd0IeXJU/exec'),
         secure: true,
         followRedirects: true
       }
