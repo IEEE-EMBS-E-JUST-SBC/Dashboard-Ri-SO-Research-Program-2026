@@ -69,6 +69,38 @@ function handleRequest(e) {
       return jsonResponse({ status: 'error', message: 'Invalid email or password' });
     }
 
+    // ── UPLOAD PHOTO → Google Drive ──────────────────────────────────
+    if (action === 'uploadPhoto') {
+      const b64    = params.imageBase64;   // data:image/jpeg;base64,....
+      const email  = params.email || 'unknown';
+      if (!b64) return jsonResponse({ status: 'error', message: 'imageBase64 required' });
+
+      const mimeMatch = b64.match(/^data:([^;]+);base64,/);
+      const mimeType  = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+      const pureB64   = b64.replace(/^data:[^;]+;base64,/, '');
+      const bytes     = Utilities.base64Decode(pureB64);
+      const blob      = Utilities.newBlob(bytes, mimeType, `profile_${email.replace(/[^a-z0-9]/gi,'_')}.jpg`);
+
+      // Save into a "RiSo2026 Profile Photos" folder (create if needed)
+      let folder;
+      const folderName = 'RiSo2026 Profile Photos';
+      const folders = DriveApp.getFoldersByName(folderName);
+      folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+
+      // Remove old photo for this email if exists
+      const existing = folder.getFilesByName(blob.getName());
+      while (existing.hasNext()) existing.next().setTrashed(true);
+
+      const file = folder.createFile(blob);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+      const fileId  = file.getId();
+      const viewUrl = `https://drive.google.com/file/d/${fileId}/view`;
+      const imgUrl  = `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+
+      return jsonResponse({ status: 'ok', fileId, viewUrl, imgUrl });
+    }
+
     // ── GET — fetch all rows from a sheet ────────────────────────────
     if (action === 'get') {
       if (!sheet) return jsonResponse({ status: 'error', message: 'No sheet specified' });
