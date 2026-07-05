@@ -6263,7 +6263,9 @@ function ProfileView({ user }) {
                   const json = await resp.json();
                   if (json.status === "ok") {
                     set("photoUrl", json.imgUrl);
-                    setPhotoMsg({ ok: true, text: "✓ Photo uploaded to Google Drive!", driveUrl: json.viewUrl });
+                    // Auto-save photoUrl to Sheets immediately — no extra click needed
+                    updateUser(user.id, { ...user, photoUrl: json.imgUrl });
+                    setPhotoMsg({ ok: true, text: "✓ Photo saved to Google Drive & Sheets!", driveUrl: json.viewUrl });
                   } else {
                     setPhotoMsg({ ok: false, text: "Upload failed: " + json.message });
                   }
