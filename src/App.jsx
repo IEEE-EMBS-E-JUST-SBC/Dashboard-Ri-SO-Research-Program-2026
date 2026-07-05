@@ -851,9 +851,15 @@ const StatusBadge = ({ status }) => {
   return <span className={`badge ${map[status]||"b-phase"}`}>{status}</span>;
 };
 
-const Avatar = ({ user }) => {
+const Avatar = ({ user, size }) => {
   const cls = user?.role === ROLES.MENTOR ? "sava mentor" : user?.role === ROLES.SUPERADMIN ? "sava admin" : user?.role === ROLES.PROADMIN ? "sava" : "sava";
   const style = user?.role === ROLES.PROADMIN ? {background:"linear-gradient(135deg,#1e1b4b,#312e81)"} : {};
+  if (user?.photoUrl) {
+    const sz = size || 36;
+    return <div className={cls} style={{...style,padding:0,overflow:"hidden",width:sz,height:sz}}>
+      <img src={user.photoUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}}/>
+    </div>;
+  }
   return <div className={cls} style={style}>{user?.avatar || "?"}</div>;
 };
 
@@ -6225,9 +6231,36 @@ function ProfileView({ user }) {
             {saved && <span style={{fontSize:12,color:"var(--jade)",fontWeight:700}}>✓ Saved!</span>}
           </div>
           <div className="card-body">
-            {/* Avatar row */}
+            {/* Avatar / Photo row */}
             <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:24,padding:16,background:"var(--snow)",borderRadius:12,border:"1px solid var(--frost)"}}>
-              <Avatar user={user}/>
+              <div style={{position:"relative",flexShrink:0}}>
+                <Avatar user={{...user, photoUrl: form.photoUrl || user.photoUrl}} size={64}/>
+                <label title="Upload photo" style={{position:"absolute",bottom:0,right:0,width:22,height:22,borderRadius:"50%",background:"var(--violet)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:12,color:"white",boxShadow:"0 1px 4px rgba(0,0,0,.3)"}}>
+                  📷
+                  <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = ev => {
+                      const img = new window.Image();
+                      img.onload = () => {
+                        const SIZE = 120;
+                        const canvas = document.createElement("canvas");
+                        canvas.width = SIZE; canvas.height = SIZE;
+                        const ctx = canvas.getContext("2d");
+                        const side = Math.min(img.width, img.height);
+                        const sx = (img.width - side) / 2;
+                        const sy = (img.height - side) / 2;
+                        ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
+                        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+                        set("photoUrl", dataUrl);
+                      };
+                      img.src = ev.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                  }}/>
+                </label>
+              </div>
               <div>
                 <div style={{fontWeight:700,fontSize:16}}>{user.name||user.Name||"—"}</div>
                 <div className="txt-muted">{user.email}</div>
@@ -6235,6 +6268,7 @@ function ProfileView({ user }) {
                   <span className={`pill-role pill-${user.role}`} style={{display:"inline-block"}}>{user.role}</span>
                   {team && <span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:"var(--frost)",color:"var(--ink2)"}}>Team {team.id} · {team.track}</span>}
                 </div>
+                <div style={{fontSize:11,color:"var(--ink3)",marginTop:4}}>Click 📷 to upload a headshot photo</div>
               </div>
             </div>
 
