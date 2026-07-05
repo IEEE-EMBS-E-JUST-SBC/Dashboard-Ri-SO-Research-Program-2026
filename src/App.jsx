@@ -528,6 +528,17 @@ function DataProvider({ children }) {
   const updateUser = (id, patch) => {
     const updated = users.map(u => u.id === id ? { ...u, ...patch } : u);
     save(updated);
+    // Keep sessionStorage in sync so photo/profile persists across hard refresh
+    try {
+      const sess = sessionStorage.getItem("riso_session");
+      if (sess) {
+        const sessUser = JSON.parse(sess);
+        const matchEmail = patch.email || users.find(u => u.id === id)?.email;
+        if (matchEmail && String(sessUser.email).toLowerCase() === String(matchEmail).toLowerCase()) {
+          sessionStorage.setItem("riso_session", JSON.stringify({ ...sessUser, ...patch }));
+        }
+      }
+    } catch(_) {}
     const { track, challengeId, teamRole, phase, status, trackLabel, track1, track2, track3, ...safePatch } = patch;
     const userEmail = patch.email || users.find(u => u.id === id)?.email;
     if (userEmail) {
@@ -645,9 +656,11 @@ function AuthProvider({ children }) {
         const matched = (sessionId !== undefined && sessionId !== null && sessionId !== "")
           ? users.find(u => u.id === sessionId)
           : null;
-        if (!matched) return user; // no match → keep session as-is
+        // Fallback: match by email so profile edits (photoUrl etc.) always reflect live
+        const byEmail = matched || (user.email ? users.find(u => String(u.email).toLowerCase() === String(user.email).toLowerCase()) : null);
+        if (!byEmail) return user; // no match → keep session as-is
         return {
-          ...matched,          // latest sheet data
+          ...byEmail,          // latest sheet data (matched by id or email)
           id:       user.id,   // never change identity
           email:    user.email,// never change email
           role:     user.role, // ← CRITICAL: role always comes from login session
