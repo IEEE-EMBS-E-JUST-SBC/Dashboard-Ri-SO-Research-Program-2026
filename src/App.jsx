@@ -2278,6 +2278,7 @@ function TrainingSessions({ user }) {
   const SessionCard = ({ s }) => {
     const registered = isRegistered(s.id);
     const isPast = s.date < today;
+    const [flyerOpen, setFlyerOpen] = useState(false);
     return (
       <div className="card" style={{marginBottom:16}}>
         <div className="card-header">
@@ -2293,17 +2294,65 @@ function TrainingSessions({ user }) {
         </div>
         <div className="card-body">
         {s.flyer && (
-          <div style={{
-            margin:"-4px -4px 16px -4px",
-            borderRadius:12,
-            overflow:"hidden",
-            boxShadow:"0 4px 16px rgba(0,0,0,.12)"
-          }}>
+          <div
+            onClick={() => setFlyerOpen(true)}
+            style={{
+              margin:"-4px -4px 16px -4px",
+              borderRadius:12,
+              overflow:"hidden",
+              boxShadow:"0 4px 16px rgba(0,0,0,.12)",
+              height:180,
+              cursor:"zoom-in",
+              position:"relative"
+            }}
+          >
             <img
               src={s.flyer}
               alt={`${s.title} — flyer`}
-              style={{width:"100%",display:"block",objectFit:"cover"}}
+              style={{width:"100%",height:"100%",display:"block",objectFit:"cover",objectPosition:"top center"}}
             />
+            <span style={{
+              position:"absolute",bottom:8,right:8,
+              background:"rgba(0,0,0,.55)",color:"#fff",
+              fontSize:11,fontWeight:600,padding:"3px 8px",borderRadius:20
+            }}>
+              🔍 View flyer
+            </span>
+          </div>
+        )}
+        {s.flyer && flyerOpen && (
+          <div
+            onClick={() => setFlyerOpen(false)}
+            style={{
+              position:"fixed",inset:0,zIndex:1000,
+              background:"rgba(15,15,20,.82)",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              padding:24,cursor:"zoom-out"
+            }}
+          >
+            <img
+              src={s.flyer}
+              alt={`${s.title} — flyer full size`}
+              onClick={e => e.stopPropagation()}
+              style={{
+                maxWidth:"min(520px, 92vw)",
+                maxHeight:"88vh",
+                width:"auto",
+                borderRadius:14,
+                boxShadow:"0 12px 48px rgba(0,0,0,.4)"
+              }}
+            />
+            <button
+              onClick={() => setFlyerOpen(false)}
+              style={{
+                position:"absolute",top:20,right:20,
+                width:36,height:36,borderRadius:"50%",
+                background:"rgba(255,255,255,.15)",color:"#fff",
+                border:"1px solid rgba(255,255,255,.3)",fontSize:18,cursor:"pointer"
+              }}
+            >
+              ✕
+            </button>
           </div>
         )}
           <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:14}}>
