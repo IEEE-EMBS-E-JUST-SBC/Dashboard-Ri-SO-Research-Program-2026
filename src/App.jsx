@@ -77,6 +77,7 @@ const TRAINING_SESSIONS = [
     blurb: "Part of the ongoing Ri-Sō 理創 Research Program — the first training session of the Medical Imaging Track. With experience spanning AI, healthcare, and responsible innovation, Eng. Maryam Sherif will bridge cutting-edge technology with real-world healthcare applications.",
     tags: ["RiSo", "MedicalImaging", "IEEEEMBS", "BiomedicalEngineering", "ArtificialIntelligence", "HealthcareAI", "Research"],
     flyer: medicalImagingSession1Flyer,
+    meetLink: "https://meet.google.com/ccw-vqhn-khn",
   },
 ];
 
@@ -2403,7 +2404,7 @@ function TrainingSessions({ user }) {
           </div>
 
           {!isPast && (
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
               {registered ? (
                 <button className="btn btn-o btn-sm" disabled style={{color:"var(--jade,#0F9F6E)",borderColor:"var(--jade,#0F9F6E)",opacity:1}}>
                   ✅ Registered
@@ -2417,7 +2418,20 @@ function TrainingSessions({ user }) {
                   {registering === s.id ? "Registering…" : "📝 Register for this session"}
                 </button>
               )}
-              <span style={{fontSize:11,color:"var(--ink3)"}}>Synced to the program's Google Sheet</span>
+              {registered && s.meetLink && (
+                <a
+                  href={s.meetLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-p btn-sm"
+                  style={{background:"var(--jade,#0F9F6E)",borderColor:"var(--jade,#0F9F6E)",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:6}}
+                >
+                  🎥 Join Meeting
+                </a>
+              )}
+              <span style={{fontSize:11,color:"var(--ink3)"}}>
+                {registered ? "See you on Google Meet!" : "Synced to the program's Google Sheet"}
+              </span>
             </div>
           )}
 
