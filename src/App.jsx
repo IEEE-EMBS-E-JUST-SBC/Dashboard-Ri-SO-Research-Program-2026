@@ -58,6 +58,27 @@ const WEBINARS = [
 ];
 
 // ─────────────────────────────────────────────
+//  TRAINING SESSIONS  (cross-track, all-team announcements)
+// ─────────────────────────────────────────────
+const TRAINING_SESSIONS = [
+  {
+    id: "TS001",
+    sessionNo: 1,
+    track: "Medical Imaging",
+    title: "Machine Learning Foundations for Medical Imaging",
+    speaker: "Eng. Maryam Sherif",
+    speakerRole: "Senior AI Engineer, KPMG · MBS",
+    date: "2026-07-27",
+    time: "08:00 PM (GMT+3:00)",
+    location: "Google Meet",
+    registration: "Through the program dashboard",
+    exclusivity: "Ri-Sō 理創 Research Program Participants Only",
+    blurb: "Part of the ongoing Ri-Sō 理創 Research Program — the first training session of the Medical Imaging Track. With experience spanning AI, healthcare, and responsible innovation, Eng. Maryam Sherif will bridge cutting-edge technology with real-world healthcare applications.",
+    tags: ["RiSo", "MedicalImaging", "IEEEEMBS", "BiomedicalEngineering", "ArtificialIntelligence", "HealthcareAI", "Research"],
+  },
+];
+
+// ─────────────────────────────────────────────
 //  GOOGLE SHEETS API HELPER
 // ─────────────────────────────────────────────
 // const SHEETS_URL = import.meta.env.VITE_API_URL;
@@ -2190,6 +2211,206 @@ function MICCAIChallenges({ user }) {
 
       {/* ── TAB: MANAGE TASKS (Authorized roles only) ── */}
 
+    </div>
+  );
+}
+
+function TrainingSessions({ user }) {
+  const { pushToSheets, showToast } = useContext(DataCtx);
+
+  const [regs, setRegs] = useState([]);          // all registrations for this user (from Sheets)
+  const [loading, setLoading] = useState(true);
+  const [registering, setRegistering] = useState(null); // sessionId currently submitting
+
+  const userEmail = (user?.email || "").toLowerCase().trim();
+  const userId = user?.id;
+
+  // Load this user's existing registrations from the "TrainingRegistrations" sheet
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      const all = await sheetsAPI.get("TrainingRegistrations");
+      if (!alive) return;
+      const mine = (all || []).filter(r =>
+        String(r.email || "").toLowerCase().trim() === userEmail ||
+        String(r.userId || "") === String(userId)
+      );
+      setRegs(mine);
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [userEmail, userId]);
+
+  const isRegistered = (sessionId) => regs.some(r => String(r.sessionId) === String(sessionId));
+
+  const handleRegister = async (s) => {
+    if (isRegistered(s.id) || registering) return;
+    setRegistering(s.id);
+    const entry = {
+      sessionId: s.id,
+      sessionTitle: s.title,
+      track: s.track,
+      userId: userId || "",
+      name: user?.name || user?.Name || "",
+      email: user?.email || "",
+      teamId: user?.teamId || user?.team || "",
+      role: user?.role || "",
+      registeredAt: new Date().toISOString(),
+    };
+    // Optimistic UI update
+    setRegs(r => [...r, entry]);
+    await pushToSheets("TrainingRegistrations", entry);
+    setRegistering(null);
+  };
+
+  const fmtDate = (iso) => {
+    const d = new Date(iso + "T00:00:00");
+    return d.toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" });
+  };
+
+  const today = new Date().toISOString().slice(0,10);
+  const upcoming = TRAINING_SESSIONS.filter(s => s.date >= today).sort((a,b)=>a.date.localeCompare(b.date));
+  const past = TRAINING_SESSIONS.filter(s => s.date < today).sort((a,b)=>b.date.localeCompare(a.date));
+
+  const SessionCard = ({ s }) => {
+    const registered = isRegistered(s.id);
+    const isPast = s.date < today;
+    return (
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-header">
+          <div>
+            <div className="card-title">
+              {s.track} Track · Session {s.sessionNo}
+            </div>
+            <div className="card-sub">{s.title}</div>
+          </div>
+          <span className="tag" style={{background:"var(--violet-tint,#F3F0FF)",color:"var(--violet,#5B3BF5)",fontWeight:700}}>
+            {isPast ? "Completed" : "Upcoming"}
+          </span>
+        </div>
+        <div className="card-body">
+          <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:14}}>
+            <div style={{
+              width:44,height:44,borderRadius:"50%",background:"var(--violet,#5B3BF5)",
+              color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",
+              fontWeight:700,fontSize:16,flexShrink:0
+            }}>
+              {s.speaker.replace(/^Eng\.\s*/,"").split(" ").map(n=>n[0]).join("").slice(0,2)}
+            </div>
+            <div>
+              <div style={{fontWeight:700,fontSize:14,color:"var(--ink)"}}>{s.speaker}</div>
+              <div style={{fontSize:12,color:"var(--ink3)"}}>{s.speakerRole}</div>
+            </div>
+          </div>
+
+          <div style={{fontSize:13,color:"var(--ink2,var(--ink3))",lineHeight:1.7,marginBottom:16}}>
+            {s.blurb}
+          </div>
+
+          <div style={{
+            display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",
+            gap:12,marginBottom:14
+          }}>
+            <div>
+              <div style={{fontSize:11,color:"var(--ink3)",fontWeight:700,textTransform:"uppercase",marginBottom:2}}>📅 Date</div>
+              <div style={{fontSize:13,fontWeight:600}}>{fmtDate(s.date)}</div>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:"var(--ink3)",fontWeight:700,textTransform:"uppercase",marginBottom:2}}>🕒 Time</div>
+              <div style={{fontSize:13,fontWeight:600}}>{s.time}</div>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:"var(--ink3)",fontWeight:700,textTransform:"uppercase",marginBottom:2}}>📍 Location</div>
+              <div style={{fontSize:13,fontWeight:600}}>{s.location}</div>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:"var(--ink3)",fontWeight:700,textTransform:"uppercase",marginBottom:2}}>📝 Registration</div>
+              <div style={{fontSize:13,fontWeight:600}}>{registered ? "Confirmed" : s.registration}</div>
+            </div>
+          </div>
+
+          <div style={{
+            padding:"10px 14px",background:"var(--snow,#F7F7FB)",borderRadius:10,
+            fontSize:12,fontWeight:700,color:"var(--violet,#5B3BF5)",marginBottom:14
+          }}>
+            🔥 Exclusively for {s.exclusivity}
+          </div>
+
+          {!isPast && (
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+              {registered ? (
+                <button className="btn btn-o btn-sm" disabled style={{color:"var(--jade,#0F9F6E)",borderColor:"var(--jade,#0F9F6E)",opacity:1}}>
+                  ✅ Registered
+                </button>
+              ) : (
+                <button
+                  className="btn btn-p btn-sm"
+                  disabled={registering === s.id}
+                  onClick={() => handleRegister(s)}
+                >
+                  {registering === s.id ? "Registering…" : "📝 Register for this session"}
+                </button>
+              )}
+              <span style={{fontSize:11,color:"var(--ink3)"}}>Synced to the program's Google Sheet</span>
+            </div>
+          )}
+
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {s.tags.map(t=>(
+              <span key={t} style={{fontSize:11,color:"var(--ink3)"}}>#{t}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div className="card" style={{marginBottom:20, background:"linear-gradient(135deg,#5B3BF5,#8B5CF6)", color:"#fff"}}>
+        <div className="card-body">
+          <div style={{fontSize:12,fontWeight:700,opacity:0.85,marginBottom:4}}>RI-SŌ 理創 RESEARCH PROGRAM</div>
+          <div style={{fontSize:20,fontWeight:800}}>Team Training Sessions</div>
+          <div style={{fontSize:13,opacity:0.9,marginTop:6,lineHeight:1.6}}>
+            Announcements and registration for all training sessions across every track. Available to all team members regardless of role.
+          </div>
+        </div>
+      </div>
+
+      {loading && (
+        <div style={{fontSize:12,color:"var(--ink3)",marginBottom:12}}>Checking your registration status…</div>
+      )}
+
+      {upcoming.length > 0 && (
+        <>
+          <div style={{fontSize:13,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>
+            Upcoming Sessions
+          </div>
+          {upcoming.map(s => <SessionCard key={s.id} s={s}/>)}
+        </>
+      )}
+
+      {past.length > 0 && (
+        <>
+          <div style={{fontSize:13,fontWeight:700,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:0.5,marginBottom:10,marginTop:8}}>
+            Past Sessions
+          </div>
+          {past.map(s => <SessionCard key={s.id} s={s}/>)}
+        </>
+      )}
+
+      {TRAINING_SESSIONS.length === 0 && (
+        <div className="card">
+          <div className="card-body" style={{textAlign:"center",padding:"64px 24px"}}>
+            <div style={{fontSize:48,marginBottom:16}}>📚</div>
+            <div style={{fontSize:17,fontWeight:700,color:"var(--ink)",marginBottom:8}}>No training sessions yet</div>
+            <div style={{fontSize:13,color:"var(--ink3)",maxWidth:380,margin:"0 auto",lineHeight:1.7}}>
+              Check back soon — training session announcements will appear here for all teams.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -6486,8 +6707,8 @@ function AppShell() {
         { id:"my_grade",     icon:"🎓", label:"My Grade" },
         { id:"meetings",     icon:"📅", label:"Meeting Notes" },
         { id:"excuse",       icon:"📝", label:"Submit Excuse" },
+        { id:"training",     icon:"📚", label:"Training" },
         // { id:"progress",     icon:"📊", label:"My Progress" },
-        // { id:"training",     icon:"📚", label:"Training Modules" },
         // { id:"research",     icon:"🔬", label:"Research Hub" },
         // { id:"resources",    icon:"⚙️", label:"Request Resources" },
         // { id:"calendar",     icon:"📅", label:"Enrichment Calendar" },
@@ -6499,8 +6720,8 @@ function AppShell() {
         my_grade:     <MyGradeView user={activeUser}/>,
         meetings:     <MeetingNotesView user={activeUser}/>,
         excuse:       <ExcuseFormView user={activeUser}/>,
+        training:     <TrainingSessions user={activeUser}/>,
         // progress:     <ParticipantProgress user={activeUser}/>,
-        // training:     <TrainingModules user={activeUser}/>,
         // research:     <ResearchHub user={activeUser}/>,
         // resources:    <ResourceRequests user={activeUser}/>,
         // calendar:     <EnrichmentCalendar user={activeUser}/>,
@@ -6515,6 +6736,7 @@ function AppShell() {
         { id:"excuses",    icon:"📝", label:"Excuses" },
         { id:"meetings",   icon:"📅", label:"Meetings" },
         { id:"challenges", icon:"🏥", label:"MICCAI Challenges" },
+        { id:"training",   icon:"📚", label:"Training" },
         { id:"profile",    icon:"👤", label:"My Profile" },
       ],
       pages: {
@@ -6524,6 +6746,7 @@ function AppShell() {
         excuses:    <ExcuseReviewView user={activeUser}/>,
         meetings:   <MeetingNotesView user={activeUser}/>,
         challenges: <MICCAIChallenges user={activeUser}/>,
+        training:   <TrainingSessions user={activeUser}/>,
       },
       defaultPage: "dashboard",
     },
@@ -6540,6 +6763,7 @@ function AppShell() {
         { id:"team_tasks",    icon:"📋", label:"Team Tasks" },
         { id:"team_meetings", icon:"📅", label:"Team Meetings" },
         { id:"team_excuses",  icon:"📝", label:"Team Excuses" },
+        { id:"training",       icon:"📚", label:"Training" },
         { id:"profile",        icon:"👤", label:"My Profile" },
       ],
       pages: {
@@ -6554,6 +6778,7 @@ function AppShell() {
         team_tasks:     <ARTaskManager user={activeUser}/>,
         team_meetings:  <MeetingNotesView user={activeUser}/>,
         team_excuses:   <ExcuseReviewView user={activeUser}/>,
+        training:       <TrainingSessions user={activeUser}/>,
       },
       defaultPage: "dashboard",
     },
@@ -6562,12 +6787,14 @@ function AppShell() {
         { id:"dashboard",  icon:"🏠", label:"Dashboard" },
         { id:"analytics",  icon:"📊", label:"Review Analytics" },
         { id:"filtration", icon:"🔍", label:"Filtration Center" },
+        { id:"training",   icon:"📚", label:"Training" },
         { id:"profile",    icon:"👤", label:"My Profile" },
       ],
       pages: {
         dashboard:  <ProAdminDashboard/>,
         analytics:  <ProAdminDashboard/>,
         filtration: <AdminFiltration/>,
+        training:   <TrainingSessions user={activeUser}/>,
       },
       defaultPage: "dashboard",
     },
@@ -6580,6 +6807,7 @@ function AppShell() {
         { id:"excuses",    icon:"📝", label:"Excuses" },
         { id:"grades",     icon:"🏆", label:"Grades" },
         { id:"challenges", icon:"🏥", label:"MICCAI Challenges" },
+        { id:"training",   icon:"📚", label:"Training" },
         { id:"profile",    icon:"👤", label:"My Profile" },
       ],
       pages: {
@@ -6589,6 +6817,7 @@ function AppShell() {
         excuses:    <ExcuseReviewView user={activeUser}/>,
         grades:     <TeamGradeOverview user={activeUser}/>,
         challenges: <MICCAIChallenges user={activeUser}/>,
+        training:   <TrainingSessions user={activeUser}/>,
       },
       defaultPage: "dashboard",
     },
@@ -6606,6 +6835,7 @@ function AppShell() {
         { id:"excuses_r",  icon:"📝", label:"Review Excuses" },
         { id:"all_grades", icon:"🏆", label:"All Grades" },
         { id:"challenges", icon:"🏥", label:"Challenges" },
+        { id:"training",   icon:"📚", label:"Training" },
         { id:"profile",    icon:"👤", label:"My Profile" },
       ],
       pages: {
@@ -6617,6 +6847,7 @@ function AppShell() {
         excuses_r:  <ExcuseReviewView user={activeUser}/>,
         all_grades: <TeamGradeOverview user={activeUser}/>,
         challenges: <MICCAIChallenges user={activeUser}/>,
+        training:   <TrainingSessions user={activeUser}/>,
       },
       defaultPage: "dashboard",
     },
