@@ -2301,7 +2301,7 @@ function TrainingSessions({ user }) {
               borderRadius:12,
               overflow:"hidden",
               boxShadow:"0 4px 16px rgba(0,0,0,.12)",
-              height:180,
+              height:220,
               cursor:"zoom-in",
               position:"relative"
             }}
@@ -2309,11 +2309,11 @@ function TrainingSessions({ user }) {
             <img
               src={s.flyer}
               alt={`${s.title} — flyer`}
-              style={{width:"100%",height:"100%",display:"block",objectFit:"cover",objectPosition:"top center"}}
+              style={{width:"100%",height:"100%",display:"block",objectFit:"cover",objectPosition:"50% 30%"}}
             />
             <span style={{
               position:"absolute",bottom:8,right:8,
-              background:"rgba(0,0,0,.55)",color:"#fff",
+              background:"rgba(0,0,0,.32)",color:"#fff",
               fontSize:11,fontWeight:600,padding:"3px 8px",borderRadius:20
             }}>
               🔍 View flyer
