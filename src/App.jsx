@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, createContext, useContext } from "react";
+import medicalImagingSession1Flyer from "./assets/training/medical-imaging-session-1.jpg";
 
 // ─────────────────────────────────────────────
 //  CONSTANTS & DATA
@@ -75,6 +76,7 @@ const TRAINING_SESSIONS = [
     exclusivity: "Ri-Sō 理創 Research Program Participants Only",
     blurb: "Part of the ongoing Ri-Sō 理創 Research Program — the first training session of the Medical Imaging Track. With experience spanning AI, healthcare, and responsible innovation, Eng. Maryam Sherif will bridge cutting-edge technology with real-world healthcare applications.",
     tags: ["RiSo", "MedicalImaging", "IEEEEMBS", "BiomedicalEngineering", "ArtificialIntelligence", "HealthcareAI", "Research"],
+    flyer: medicalImagingSession1Flyer,
   },
 ];
 
@@ -2290,6 +2292,20 @@ function TrainingSessions({ user }) {
           </span>
         </div>
         <div className="card-body">
+        {s.flyer && (
+          <div style={{
+            margin:"-4px -4px 16px -4px",
+            borderRadius:12,
+            overflow:"hidden",
+            boxShadow:"0 4px 16px rgba(0,0,0,.12)"
+          }}>
+            <img
+              src={s.flyer}
+              alt={`${s.title} — flyer`}
+              style={{width:"100%",display:"block",objectFit:"cover"}}
+            />
+          </div>
+        )}
           <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:14}}>
             <div style={{
               width:44,height:44,borderRadius:"50%",background:"var(--violet,#5B3BF5)",
