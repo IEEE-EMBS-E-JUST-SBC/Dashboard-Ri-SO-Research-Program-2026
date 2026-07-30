@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, createContext, useContext } from "react";
 import medicalImagingSession1Flyer from "./assets/training/medical-imaging-session-1.jpg";
+import medicalImagingSession2Flyer from "./assets/training/medical-imaging-session-2.jpg";
 
 // ─────────────────────────────────────────────
 //  CONSTANTS & DATA
@@ -78,6 +79,25 @@ const TRAINING_SESSIONS = [
     tags: ["RiSo", "MedicalImaging", "IEEEEMBS", "BiomedicalEngineering", "ArtificialIntelligence", "HealthcareAI", "Research"],
     flyer: medicalImagingSession1Flyer,
     meetLink: "https://meet.google.com/ccw-vqhn-khn",
+  },
+  {
+    id: "TS002",
+    sessionNo: 2,
+    track: "Medical Imaging",
+    title: "Medical Imaging Training — Session 2",
+    speaker: "Eng. Maryam Sherif",
+    speakerRole: "Senior AI Engineer, KPMG · MBS",
+    date: "2026-07-31",
+    time: "08:00 – 9:00 PM (Africa/Cairo)",
+    location: "Google Meet",
+    registration: "Through the program dashboard",
+    exclusivity: "Ri-Sō 理創 Research Program Participants Only",
+    blurb: "The second training session of the Medical Imaging Track, continuing the Ri-Sō 理創 Research Program 2026 series with Eng. Maryam Sherif.",
+    tags: ["RiSo", "MedicalImaging", "IEEEEMBS", "BiomedicalEngineering", "ArtificialIntelligence", "HealthcareAI", "Research"],
+    flyer: medicalImagingSession2Flyer,
+    meetLink: "https://meet.google.com/izm-boau-iey",
+    dialIn: { number: "+27 10 823 1083", country: "ZA", pin: "983 553 206" },
+    dialInUrl: "https://tel.meet/izm-boau-iey?pin=1273511617292",
   },
 ];
 
@@ -2432,6 +2452,16 @@ function TrainingSessions({ user }) {
               <span style={{fontSize:11,color:"var(--ink3)"}}>
                 {registered ? "See you on Google Meet!" : "Synced to the program's Google Sheet"}
               </span>
+            </div>
+          )}
+
+          {!isPast && registered && s.dialIn && (
+            <div style={{
+              padding:"8px 14px",background:"var(--snow,#F7F7FB)",borderRadius:10,
+              fontSize:11,color:"var(--ink3)",marginBottom:14,lineHeight:1.6
+            }}>
+              📞 Can't join by video? Dial <strong style={{color:"var(--ink)"}}>{s.dialIn.number}</strong> ({s.dialIn.country}) · PIN <strong style={{color:"var(--ink)"}}>{s.dialIn.pin}</strong>
+              {s.dialInUrl && <> — <a href={s.dialInUrl} target="_blank" rel="noopener noreferrer" style={{color:"var(--violet,#5B3BF5)",fontWeight:600}}>more numbers</a></>}
             </div>
           )}
 
